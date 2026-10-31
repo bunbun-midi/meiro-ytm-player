@@ -226,6 +226,9 @@ func (a *app) applyReloadedSettings(previous settings.Settings) {
 		s.PodcastPitch != previous.PodcastPitch || s.MusicPitch != previous.MusicPitch) && a.current.VideoID != "" {
 		a.applySpeed()
 	}
+	if s.TimeStretch != previous.TimeStretch {
+		a.applyStretch()
+	}
 	if !maps.Equal(s.Shortcuts, previous.Shortcuts) {
 		a.keyboard.keys = nil
 		a.keyboard.problem = ""

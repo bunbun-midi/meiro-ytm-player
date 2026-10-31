@@ -10,7 +10,7 @@ import (
 
 func TestRateAtUnityMatchesTheSource(t *testing.T) {
 	in := sinePCM(440, 500*time.Millisecond)
-	out := readRate(t, in, 1, 0)
+	out := readRateAlgo(t, in, 1, 0, StretchOverlapAdd)
 	inFrames := len(in) / frameBytes
 	outFrames := len(out) / frameBytes
 	if outFrames < inFrames {
@@ -32,46 +32,59 @@ func TestRateAtUnityMatchesTheSource(t *testing.T) {
 }
 
 func TestRateChangesPitchAndTempo(t *testing.T) {
-	pitched := readRate(t, sinePCM(440, time.Second), 1, 12)
-	if got := toneFrequency(pitched); math.Abs(got-880) > 40 {
-		t.Fatalf("an octave up is %v Hz, want about 880", got)
-	}
-	if seconds := pcmSeconds(pitched); seconds < 0.9 || seconds > 1.2 {
-		t.Fatalf("an octave up lasts %vs, want about 1s", seconds)
-	}
+	for _, stretch := range []Stretch{StretchPhaseVocoder, StretchOverlapAdd} {
+		t.Run(stretchName(stretch), func(t *testing.T) {
+			pitched := readRateAlgo(t, sinePCM(440, time.Second), 1, 12, stretch)
+			if got := toneFrequency(pitched); math.Abs(got-880) > 40 {
+				t.Fatalf("an octave up is %v Hz, want about 880", got)
+			}
+			if seconds := pcmSeconds(pitched); seconds < 0.9 || seconds > 1.2 {
+				t.Fatalf("an octave up lasts %vs, want about 1s", seconds)
+			}
 
-	slowed := readRate(t, sinePCM(440, 200*time.Millisecond), 0.05, 0)
-	if seconds := pcmSeconds(slowed); seconds < 3.4 || seconds > 4.6 {
-		t.Fatalf("0.2s at 0.05× lasts %vs, want about 4s", seconds)
-	}
-	if got := toneFrequency(slowed); math.Abs(got-440) > 20 {
-		t.Fatalf("slowed tone is %v Hz, want about 440", got)
-	}
+			slowed := readRateAlgo(t, sinePCM(440, 200*time.Millisecond), 0.05, 0, stretch)
+			if seconds := pcmSeconds(slowed); seconds < 3.4 || seconds > 4.6 {
+				t.Fatalf("0.2s at 0.05× lasts %vs, want about 4s", seconds)
+			}
+			if got := toneFrequency(slowed); math.Abs(got-440) > 20 {
+				t.Fatalf("slowed tone is %v Hz, want about 440", got)
+			}
 
-	faster := readRate(t, sinePCM(440, time.Second), 1.8, 0)
-	if seconds := pcmSeconds(faster); seconds < 0.45 || seconds > 0.7 {
-		t.Fatalf("1s at 1.8× lasts %vs, want about 0.56s", seconds)
+			faster := readRateAlgo(t, sinePCM(440, time.Second), 1.8, 0, stretch)
+			if seconds := pcmSeconds(faster); seconds < 0.45 || seconds > 0.7 {
+				t.Fatalf("1s at 1.8× lasts %vs, want about 0.56s", seconds)
+			}
+			if got := toneFrequency(faster); math.Abs(got-440) > 20 {
+				t.Fatalf("sped-up tone is %v Hz, want about 440", got)
+			}
+		})
 	}
-	if got := toneFrequency(faster); math.Abs(got-440) > 20 {
-		t.Fatalf("sped-up tone is %v Hz, want about 440", got)
+}
+
+func stretchName(stretch Stretch) string {
+	if stretch == StretchOverlapAdd {
+		return "overlap-add"
 	}
+	return "phase-vocoder"
 }
 
 func TestRateKeepsTheLevel(t *testing.T) {
 	in := sinePCM(440, time.Second)
 	want := rmsPCM(in)
-	for _, rate := range []struct {
-		speed, pitch float64
-	}{{1, 0}, {0.5, 0}, {1.8, 0}, {1, 12}, {0.5, -12}} {
-		got := rmsPCM(readRate(t, in, rate.speed, rate.pitch))
-		// Resampling a tone costs a little level. A stretch that cancelled
-		// would fall much further than that.
-		limit := 0.2
-		if rate.pitch != 0 {
-			limit = 0.4
-		}
-		if math.Abs(got-want) > want*limit {
-			t.Errorf("speed %v pitch %v RMS = %v, source = %v", rate.speed, rate.pitch, got, want)
+	for _, stretch := range []Stretch{StretchPhaseVocoder, StretchOverlapAdd} {
+		for _, rate := range []struct {
+			speed, pitch float64
+		}{{1, 0}, {0.5, 0}, {1.8, 0}, {1, 12}, {0.5, -12}} {
+			got := rmsPCM(readRateAlgo(t, in, rate.speed, rate.pitch, stretch))
+			// Resampling a tone costs a little level. A stretch that cancelled
+			// would fall much further than that.
+			limit := 0.2
+			if rate.pitch != 0 {
+				limit = 0.4
+			}
+			if math.Abs(got-want) > want*limit {
+				t.Errorf("%s speed %v pitch %v RMS = %v, source = %v", stretchName(stretch), rate.speed, rate.pitch, got, want)
+			}
 		}
 	}
 }
@@ -140,7 +153,14 @@ func TestSourcePositionReachesTheEndAtEachSpeed(t *testing.T) {
 
 func readRate(t *testing.T, in []byte, speed, pitch float64) []byte {
 	t.Helper()
-	out, err := io.ReadAll(newRateReader(bytes.NewReader(in), newRateControl(speed, pitch)))
+	return readRateAlgo(t, in, speed, pitch, StretchPhaseVocoder)
+}
+
+func readRateAlgo(t *testing.T, in []byte, speed, pitch float64, stretch Stretch) []byte {
+	t.Helper()
+	ctl := newRateControl(speed, pitch)
+	ctl.setStretch(stretch)
+	out, err := io.ReadAll(newRateReader(bytes.NewReader(in), ctl))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,4 +223,58 @@ func silentRun(pcm []byte) int {
 		run = 0
 	}
 	return -1
+}
+
+func TestPhaseVocoderWindowSumsToOne(t *testing.T) {
+	sum := make([]float64, pvHop)
+	for i, w := range pvWindow {
+		sum[i%pvHop] += w
+	}
+	for i, s := range sum {
+		if math.Abs(s-1) > 1e-9 {
+			t.Fatalf("window sum at %d = %v, want 1", i, s)
+		}
+	}
+}
+
+func TestFFTRoundTrip(t *testing.T) {
+	a := make([]complex128, pvN)
+	for i := range a {
+		a[i] = complex(math.Sin(float64(i)/10), 0)
+	}
+	original := append([]complex128(nil), a...)
+	fft(a, false)
+	fft(a, true)
+	var worst float64
+	for i := range a {
+		worst = max(worst, math.Abs(real(a[i])-real(original[i])), math.Abs(imag(a[i])))
+	}
+	if worst > 1e-9 {
+		t.Fatalf("round trip misses by %v", worst)
+	}
+}
+
+func TestPhaseVocoderAtUnityFollowsTheSource(t *testing.T) {
+	in := sinePCM(440, time.Second)
+	out := readRate(t, in, 1, 0)
+	if got := toneFrequency(out); math.Abs(got-440) > 15 {
+		t.Fatalf("phase vocoder at 1× is %v Hz, want about 440", got)
+	}
+	if seconds := pcmSeconds(out); seconds < 0.9 || seconds > 1.2 {
+		t.Fatalf("phase vocoder at 1× lasts %vs, want about 1s", seconds)
+	}
+	// The first window is still fading in. After that the frames add back
+	// to the samples that went in.
+	var dot, ea, eb float64
+	frames := len(in) / frameBytes
+	for i := pvN; i < frames-pvN; i++ {
+		a := float64(pcmSample(in, i))
+		b := float64(pcmSample(out, i))
+		dot += a * b
+		ea += a * a
+		eb += b * b
+	}
+	if ea == 0 || eb == 0 || dot/math.Sqrt(ea*eb) < 0.98 {
+		t.Fatalf("phase vocoder correlation %v", dot/math.Sqrt(ea*eb))
+	}
 }

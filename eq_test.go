@@ -9,6 +9,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/elianiva/meiro/internal/settings"
+	"github.com/elianiva/meiro/player"
 )
 
 // TestTheSoundCardSwitchAndPreset drives the equaliser the way a user does:
@@ -108,5 +109,34 @@ func TestCrossfadeSwitchAndSliderReachThePlayerAndSurviveARestart(t *testing.T) 
 	tt.Frame()
 	if a.player.Crossfade() != 0 || a.settings.CrossfadeSeconds != seconds {
 		t.Errorf("switching it off left the player at %v and the length at %d s; want 0 and %d s kept", a.player.Crossfade(), a.settings.CrossfadeSeconds, seconds)
+	}
+}
+
+func TestTimeStretchSetting(t *testing.T) {
+	a := newTestApp(t)
+	if a.player.Stretch() != player.StretchPhaseVocoder {
+		t.Fatalf("stretch = %v, want the phase vocoder", a.player.Stretch())
+	}
+	a.router.Push("/settings")
+	tt := ui.NewTester(a.view, 1000, 900)
+	tt.Frame()
+	if err := tt.Click("Search settings"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("phase vocoder")
+	tt.Frame()
+	if err := tt.Click("Overlap-add"); err != nil {
+		t.Fatalf("%v in %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if a.settings.TimeStretch != settings.TimeStretchOverlapAdd || a.player.Stretch() != player.StretchOverlapAdd {
+		t.Fatalf("setting %q, player %v", a.settings.TimeStretch, a.player.Stretch())
+	}
+	if err := tt.Click("Phase vocoder"); err != nil {
+		t.Fatalf("%v in %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if a.settings.TimeStretch != "" || a.player.Stretch() != player.StretchPhaseVocoder {
+		t.Fatalf("setting %q, player %v", a.settings.TimeStretch, a.player.Stretch())
 	}
 }

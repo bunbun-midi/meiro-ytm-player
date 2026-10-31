@@ -36,11 +36,12 @@ var hannWindow = func() [rateWindow]float64 {
 	return w
 }()
 
-// rateConfig is one speed and pitch the audio thread should play. The
-// control thread publishes a new one; it never mutates a published value.
+// rateConfig is one speed, pitch and stretch the audio thread should play.
+// The control thread publishes a new one; it never mutates a published value.
 type rateConfig struct {
-	speed float64
-	pitch float64
+	speed   float64
+	pitch   float64
+	stretch Stretch
 }
 
 // rateControl is shared by the audio thread and whoever moves a slider.
@@ -55,22 +56,42 @@ func newRateControl(speed, pitch float64) *rateControl {
 }
 
 func (c *rateControl) set(speed, pitch float64) {
-	c.target.Store(&rateConfig{speed: speed, pitch: pitch})
+	stretch := StretchPhaseVocoder
+	if cur := c.target.Load(); cur != nil {
+		stretch = cur.stretch
+	}
+	c.store(speed, pitch, stretch)
 }
 
-func (c *rateControl) get() (speed, pitch float64) {
+// setStretch publishes the time-stretch algorithm, keeping the speed and pitch.
+func (c *rateControl) setStretch(stretch Stretch) {
+	speed, pitch, _ := c.get()
+	c.store(speed, pitch, stretch)
+}
+
+func (c *rateControl) store(speed, pitch float64, stretch Stretch) {
+	if stretch != StretchOverlapAdd {
+		stretch = StretchPhaseVocoder
+	}
+	c.target.Store(&rateConfig{speed: speed, pitch: pitch, stretch: stretch})
+}
+
+func (c *rateControl) get() (speed, pitch float64, stretch Stretch) {
 	cfg := c.target.Load()
 	if cfg == nil {
-		return 1, 0
+		return 1, 0, StretchPhaseVocoder
 	}
-	speed, pitch = cfg.speed, cfg.pitch
+	speed, pitch, stretch = cfg.speed, cfg.pitch, cfg.stretch
 	if !(speed > 0) || math.IsNaN(speed) {
 		speed = 1
 	}
 	if math.IsNaN(pitch) {
 		pitch = 0
 	}
-	return speed, pitch
+	if stretch != StretchOverlapAdd {
+		stretch = StretchPhaseVocoder
+	}
+	return speed, pitch, stretch
 }
 
 // rateSpan maps an output frame to the source frame it represents. Later
@@ -90,13 +111,13 @@ type rateSpans struct {
 // happen on the samples oto is about to take, so a slider does not open a
 // gap or restart the decode.
 //
-// Speed is an overlap-add time stretch: each grain is a run of the source,
-// and the next grain starts further along the source when playback is
-// faster. Pitch resamples that stretch. To play higher, the stretch runs
-// longer and the resampler reads it faster, which brings the length back;
-// lower is the other way around. One output frame is one input frame of the
-// resampler, so the pitch change does not play a second, delayed copy.
-// At unity both are transparent.
+// Speed is a time stretch, either a phase vocoder or an overlap-add of
+// waveform grains, and the next grain starts further along the source when
+// playback is faster. Pitch resamples that stretch. To play higher, the
+// stretch runs longer and the resampler reads it faster, which brings the
+// length back; lower is the other way around. One output frame is one input
+// frame of the resampler, so the pitch change does not play a second,
+// delayed copy. At unity both are transparent.
 type rateReader struct {
 	src io.Reader
 	ctl *rateControl
@@ -128,6 +149,18 @@ type rateReader struct {
 
 	draining bool
 	spans    atomic.Pointer[rateSpans]
+	algo     Stretch
+
+	// Phase vocoder state. The audio thread owns it.
+	pvSpec   []complex128
+	pvPrev   [2][]float64
+	pvSynth  [2][]float64
+	pvHave   bool
+	pvCopied bool
+	pvHa     float64
+	pvMag    []float64
+	pvPhase  []float64
+	pvPeaks  []int
 }
 
 func newRateReader(src io.Reader, ctl *rateControl) *rateReader {
@@ -136,13 +169,15 @@ func newRateReader(src io.Reader, ctl *rateControl) *rateReader {
 	}
 	r := &rateReader{src: src, ctl: ctl}
 	r.inputEnd.Store(-1)
-	speed, pitch := ctl.get()
+	speed, pitch, _ := ctl.get()
 	r.ratio = pitchRatio(pitch)
 	r.stretch = clampSpeed(speed) / r.ratio
 	return r
 }
 
-func (r *rateReader) set(speed, pitch float64) { r.ctl.set(speed, pitch) }
+func (r *rateReader) set(speed, pitch float64, stretch Stretch) {
+	r.ctl.store(speed, pitch, stretch)
+}
 
 // sourceAt is the source frame heard at output frame outFrame. outFrame is
 // counted in the frames this reader has handed on, which is where the device
@@ -246,7 +281,7 @@ func (r *rateReader) sampleReady() bool {
 // placed before its samples are handed on, so the overlap with the grain
 // before it is already mixed in.
 func (r *rateReader) placeGrain() error {
-	speed, pitch := r.ctl.get()
+	speed, pitch, algo := r.ctl.get()
 	speed = clampSpeed(speed)
 	target := pitchRatio(pitch)
 	if r.emitted == 0 || r.ratio == 0 {
@@ -255,20 +290,24 @@ func (r *rateReader) placeGrain() error {
 	// A higher key stretches the source more slowly, so the resampler can
 	// read the result faster and land back on the same length.
 	r.stretch = speed / r.ratio
+	if algo != r.algo {
+		r.algo = algo
+		r.pvHave = false
+		r.pvCopied = false
+		r.pvHa = 0
+	}
+	if algo == StretchOverlapAdd {
+		return r.placeOverlap()
+	}
+	return r.placeVocoder()
+}
+
+func (r *rateReader) placeOverlap() error {
 	hopIn := float64(rateHopOut) * r.stretch
 	need := int64(math.Floor(r.inPos)) + rateSearch + rateWindow + 2
-	if err := r.fill(need); err != nil {
-		r.fail = err
-		r.draining = true
-		return nil
-	}
-	available := r.origin + int64(len(r.frames))
-	if r.eof && r.inPos >= float64(available) {
-		r.draining = true
-		return nil
-	}
-	if !r.eof && available < need {
-		return io.ErrNoProgress
+	ok, err := r.readyInput(need)
+	if !ok {
+		return err
 	}
 	// inPos is where this grain would start to keep the speed exact. It may
 	// slide a few milliseconds so it adds to the grain already playing
@@ -282,8 +321,27 @@ func (r *rateReader) placeGrain() error {
 	r.prevIn = chosen
 	r.inPos += hopIn
 	r.grainAt += rateHopOut
-	r.dropInput()
+	r.dropInput(rateSearch + rateWindow)
 	return nil
+}
+
+// readyInput reports whether the source holds the samples the next frame
+// needs. A false ok with a nil error means the stream is draining.
+func (r *rateReader) readyInput(need int64) (bool, error) {
+	if err := r.fill(need); err != nil {
+		r.fail = err
+		r.draining = true
+		return false, nil
+	}
+	available := r.origin + int64(len(r.frames))
+	if r.eof && r.inPos >= float64(available) {
+		r.draining = true
+		return false, nil
+	}
+	if !r.eof && available < need {
+		return false, io.ErrNoProgress
+	}
+	return true, nil
 }
 
 func (r *rateReader) fill(until int64) error {
@@ -471,9 +529,10 @@ func (r *rateReader) finishAt(ready int64) int64 {
 	return ready
 }
 
-func (r *rateReader) dropInput() {
-	// The next grain still needs the previous overlap, and room to slide.
-	keep := int64(math.Floor(r.inPos)) - (rateSearch + rateWindow)
+func (r *rateReader) dropInput(keepBehind int) {
+	// The next grain still needs the samples behind inPos, including room
+	// for the overlap-add search.
+	keep := int64(math.Floor(r.inPos)) - int64(keepBehind)
 	drop := int(keep - r.origin)
 	if drop <= 0 || drop >= len(r.frames) {
 		return
@@ -494,7 +553,7 @@ func (r *rateReader) dropOutput() {
 		keep = r.grainAt
 	}
 	drop := int(keep - r.olaOrigin)
-	if drop < rateHopOut || drop >= len(r.ola) {
+	if drop < pvHop || drop >= len(r.ola) {
 		return
 	}
 	copy(r.ola, r.ola[drop:])
@@ -503,7 +562,7 @@ func (r *rateReader) dropOutput() {
 }
 
 func (r *rateReader) emit(dst []byte) {
-	speed, pitch := r.ctl.get()
+	speed, pitch, _ := r.ctl.get()
 	speed = clampSpeed(speed)
 	target := pitchRatio(pitch)
 	if r.emitted == 0 || r.ratio == 0 {

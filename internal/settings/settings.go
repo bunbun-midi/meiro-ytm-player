@@ -121,6 +121,9 @@ type Settings struct {
 	MusicPitch   float64 `json:"musicPitch,omitempty"`
 	// HistoryLimit is how many plays are kept. 0 means the default.
 	HistoryLimit int `json:"historyLimit,omitempty"`
+	// TimeStretch is how the speed slider stretches time: "Phase vocoder"
+	// or "Overlap-add". Empty means the phase vocoder.
+	TimeStretch string `json:"timeStretch,omitempty"`
 }
 
 // TrayMark names one of the menu bar icon styles.
@@ -184,6 +187,13 @@ const (
 	// MaxHistoryLimit is as large as the history setting goes. Past this the
 	// file and the memory it takes stop being reasonable.
 	MaxHistoryLimit = 1_000_000
+)
+
+// The time-stretch algorithms the speed slider can use. Empty in a settings
+// file means the phase vocoder.
+const (
+	TimeStretchPhaseVocoder = "Phase vocoder"
+	TimeStretchOverlapAdd   = "Overlap-add"
 )
 
 // ClampHistoryLimit reads 0, and anything below 1, as the default cap.
@@ -331,6 +341,9 @@ func Parse(data []byte) (Settings, error) {
 		read.HistoryLimit = 0
 	} else if read.HistoryLimit > MaxHistoryLimit {
 		read.HistoryLimit = MaxHistoryLimit
+	}
+	if read.TimeStretch != TimeStretchOverlapAdd {
+		read.TimeStretch = ""
 	}
 	return read, nil
 }

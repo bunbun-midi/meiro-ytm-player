@@ -729,6 +729,27 @@ func (a *app) applySpeed() {
 	_ = a.player.SetPlayback(context.Background(), speed, pitch)
 }
 
+// setTimeStretch remembers which algorithm the speed slider uses and applies
+// it to the stream that is playing.
+func (a *app) setTimeStretch(name string) {
+	if name == settings.TimeStretchOverlapAdd {
+		a.settings.TimeStretch = settings.TimeStretchOverlapAdd
+	} else {
+		a.settings.TimeStretch = ""
+	}
+	a.applyStretch()
+	a.saveSettings()
+}
+
+// applyStretch publishes the saved time-stretch to the player.
+func (a *app) applyStretch() {
+	stretch := player.StretchPhaseVocoder
+	if a.settings.TimeStretch == settings.TimeStretchOverlapAdd {
+		stretch = player.StretchOverlapAdd
+	}
+	a.player.SetStretch(stretch)
+}
+
 // toggleMute silences the player, or brings back the last volume above 0. With
 // no such volume in this run, it unmutes to 40.
 func (a *app) toggleMute() {

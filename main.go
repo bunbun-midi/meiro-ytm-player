@@ -209,6 +209,7 @@ func (a *app) setup() {
 	a.player.SetVolume(playbackVolume(a.volume, 0, false, a.settings.LogVolume))
 	a.loadEQ()
 	a.applyCrossfade()
+	a.applyStretch()
 	a.openAudioCache()
 	a.openArtworkCache()
 }

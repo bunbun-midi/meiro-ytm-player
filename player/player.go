@@ -75,10 +75,12 @@ type Player struct {
 	// equaliser is off. Guarded by ctl while sessions publish updated targets.
 	eqBands []float64
 	// speed is how fast streams play, 1 for their own pace, and pitch is
-	// how far their key sits from the recording, in semitones. Written
-	// under mu. The audio thread reads the rate published on the session.
-	speed float64
-	pitch float64
+	// how far their key sits from the recording, in semitones. stretch is
+	// which time-stretch the speed uses. Written under mu. The audio thread
+	// reads the rate published on the session.
+	speed   float64
+	pitch   float64
+	stretch Stretch
 	// crossfade is how long the end of a track fades into the start of the
 	// next, zero for none. Written under ctl.
 	crossfade time.Duration
@@ -192,9 +194,9 @@ func (p *Player) PreloadContext(ctx context.Context, tag, url string) error {
 	eq := p.eqBands
 	p.ctl.Unlock()
 	p.mu.Lock()
-	speed, pitch := p.speed, p.pitch
+	speed, pitch, stretch := p.speed, p.pitch, p.stretch
 	p.mu.Unlock()
-	next, err := p.decode(ffmpeg, url, 0, eq, speed, pitch)
+	next, err := p.decode(ffmpeg, url, 0, eq, speed, pitch, stretch)
 	if err != nil {
 		return err
 	}
@@ -213,7 +215,7 @@ func (p *Player) PreloadContext(ctx context.Context, tag, url string) error {
 		next.discard()
 		return nil
 	}
-	next.rate.set(p.speed, p.pitch)
+	next.rate.set(p.speed, p.pitch, p.stretch)
 	old := p.next
 	p.next = next
 	p.mu.Unlock()
@@ -473,15 +475,40 @@ func (p *Player) SetPlayback(ctx context.Context, speed, semitones float64) erro
 	return nil
 }
 
+// SetStretch chooses the time-stretch the speed slider uses. The stream
+// playing takes it on the next grain, without restarting.
+func (p *Player) SetStretch(stretch Stretch) {
+	if stretch != StretchOverlapAdd {
+		stretch = StretchPhaseVocoder
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.stretch = stretch
+	p.publishRate()
+}
+
+// Stretch returns the time-stretch the speed slider uses.
+func (p *Player) Stretch() Stretch {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.stretch
+}
+
 // storePlayback publishes speed and pitch to the streams already open.
 // The caller holds mu.
 func (p *Player) storePlayback(speed, semitones float64) {
 	p.speed, p.pitch = speed, semitones
+	p.publishRate()
+}
+
+// publishRate hands the current speed, pitch and stretch to the streams
+// already open. The caller holds mu.
+func (p *Player) publishRate() {
 	if p.session != nil && p.session.rate != nil {
-		p.session.rate.set(speed, semitones)
+		p.session.rate.set(p.speed, p.pitch, p.stretch)
 	}
 	if p.next != nil && p.next.rate != nil {
-		p.next.rate.set(speed, semitones)
+		p.next.rate.set(p.speed, p.pitch, p.stretch)
 	}
 }
 
@@ -672,9 +699,9 @@ func (p *Player) start(ctx context.Context, url string, at time.Duration, paused
 	p.stop()
 
 	p.mu.Lock()
-	speed, pitch := p.speed, p.pitch
+	speed, pitch, stretch := p.speed, p.pitch, p.stretch
 	p.mu.Unlock()
-	s, err := p.decode(ffmpeg, url, at, p.eqBands, speed, pitch)
+	s, err := p.decode(ffmpeg, url, at, p.eqBands, speed, pitch, stretch)
 	if err != nil {
 		return err
 	}
@@ -684,7 +711,7 @@ func (p *Player) start(ctx context.Context, url string, at time.Duration, paused
 	p.mu.Lock()
 	// A slider may have moved while ffmpeg was opening. The reader has not
 	// started, so this is the rate the first sample plays at.
-	s.rate.set(p.speed, p.pitch)
+	s.rate.set(p.speed, p.pitch, p.stretch)
 	s.out.SetVolume(p.volume)
 	p.session = s
 	p.mu.Unlock()
@@ -698,7 +725,7 @@ func (p *Player) start(ctx context.Context, url string, at time.Duration, paused
 // session's reader stretches and shifts the PCM as it reaches the output.
 // The session has no output yet: start gives it one, and a handoff takes over
 // the one before it.
-func (p *Player) decode(ffmpeg, url string, at time.Duration, eq []float64, speed, pitch float64) (*session, error) {
+func (p *Player) decode(ffmpeg, url string, at time.Duration, eq []float64, speed, pitch float64, stretch Stretch) (*session, error) {
 	cmd := exec.Command(ffmpeg, streamArgs(url, at, p.rangedHTTP)...) //nolint:noctx // the player ends ffmpeg itself when the stream is replaced or stopped
 	hideWindow(cmd)
 	pipe, writer, err := os.Pipe()
@@ -719,6 +746,7 @@ func (p *Player) decode(ffmpeg, url string, at time.Duration, eq []float64, spee
 		offset: at, done: make(chan struct{}), quit: make(chan struct{}), eq: newEqualizer(eq),
 	}
 	s.rate = newRateReader(pipe, newRateControl(speed, pitch))
+	s.rate.set(speed, pitch, stretch)
 	s.fade = newFadeReader(newEQReader(s.rate, s.eq), func() *session { return p.upcoming(s) })
 	s.source = newCountingReader(s.fade, func() io.Reader { return p.handoff(s) })
 	go p.reap(s)
