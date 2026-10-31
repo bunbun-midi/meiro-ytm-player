@@ -32,7 +32,7 @@ func TestRateAtUnityMatchesTheSource(t *testing.T) {
 }
 
 func TestRateChangesPitchAndTempo(t *testing.T) {
-	for _, stretch := range []Stretch{StretchPhaseVocoder, StretchOverlapAdd} {
+	for _, stretch := range []Stretch{StretchBungee, StretchPhaseVocoder, StretchOverlapAdd} {
 		t.Run(stretchName(stretch), func(t *testing.T) {
 			pitched := readRateAlgo(t, sinePCM(440, time.Second), 1, 12, stretch)
 			if got := toneFrequency(pitched); math.Abs(got-880) > 40 {
@@ -62,16 +62,20 @@ func TestRateChangesPitchAndTempo(t *testing.T) {
 }
 
 func stretchName(stretch Stretch) string {
-	if stretch == StretchOverlapAdd {
+	switch stretch {
+	case StretchOverlapAdd:
 		return "overlap-add"
+	case StretchPhaseVocoder:
+		return "phase-vocoder"
+	default:
+		return "bungee"
 	}
-	return "phase-vocoder"
 }
 
 func TestRateKeepsTheLevel(t *testing.T) {
 	in := sinePCM(440, time.Second)
 	want := rmsPCM(in)
-	for _, stretch := range []Stretch{StretchPhaseVocoder, StretchOverlapAdd} {
+	for _, stretch := range []Stretch{StretchBungee, StretchPhaseVocoder, StretchOverlapAdd} {
 		for _, rate := range []struct {
 			speed, pitch float64
 		}{{1, 0}, {0.5, 0}, {1.8, 0}, {1, 12}, {0.5, -12}} {
@@ -153,7 +157,7 @@ func TestSourcePositionReachesTheEndAtEachSpeed(t *testing.T) {
 
 func readRate(t *testing.T, in []byte, speed, pitch float64) []byte {
 	t.Helper()
-	return readRateAlgo(t, in, speed, pitch, StretchPhaseVocoder)
+	return readRateAlgo(t, in, speed, pitch, StretchBungee)
 }
 
 func readRateAlgo(t *testing.T, in []byte, speed, pitch float64, stretch Stretch) []byte {
@@ -256,7 +260,7 @@ func TestFFTRoundTrip(t *testing.T) {
 
 func TestPhaseVocoderAtUnityFollowsTheSource(t *testing.T) {
 	in := sinePCM(440, time.Second)
-	out := readRate(t, in, 1, 0)
+	out := readRateAlgo(t, in, 1, 0, StretchPhaseVocoder)
 	if got := toneFrequency(out); math.Abs(got-440) > 15 {
 		t.Fatalf("phase vocoder at 1× is %v Hz, want about 440", got)
 	}

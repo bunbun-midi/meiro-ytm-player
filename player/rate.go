@@ -56,7 +56,7 @@ func newRateControl(speed, pitch float64) *rateControl {
 }
 
 func (c *rateControl) set(speed, pitch float64) {
-	stretch := StretchPhaseVocoder
+	stretch := StretchBungee
 	if cur := c.target.Load(); cur != nil {
 		stretch = cur.stretch
 	}
@@ -70,16 +70,13 @@ func (c *rateControl) setStretch(stretch Stretch) {
 }
 
 func (c *rateControl) store(speed, pitch float64, stretch Stretch) {
-	if stretch != StretchOverlapAdd {
-		stretch = StretchPhaseVocoder
-	}
-	c.target.Store(&rateConfig{speed: speed, pitch: pitch, stretch: stretch})
+	c.target.Store(&rateConfig{speed: speed, pitch: pitch, stretch: knownStretch(stretch)})
 }
 
 func (c *rateControl) get() (speed, pitch float64, stretch Stretch) {
 	cfg := c.target.Load()
 	if cfg == nil {
-		return 1, 0, StretchPhaseVocoder
+		return 1, 0, StretchBungee
 	}
 	speed, pitch, stretch = cfg.speed, cfg.pitch, cfg.stretch
 	if !(speed > 0) || math.IsNaN(speed) {
@@ -88,10 +85,7 @@ func (c *rateControl) get() (speed, pitch float64, stretch Stretch) {
 	if math.IsNaN(pitch) {
 		pitch = 0
 	}
-	if stretch != StretchOverlapAdd {
-		stretch = StretchPhaseVocoder
-	}
-	return speed, pitch, stretch
+	return speed, pitch, knownStretch(stretch)
 }
 
 // rateSpan maps an output frame to the source frame it represents. Later
@@ -111,13 +105,13 @@ type rateSpans struct {
 // happen on the samples oto is about to take, so a slider does not open a
 // gap or restart the decode.
 //
-// Speed is a time stretch, either a phase vocoder or an overlap-add of
-// waveform grains, and the next grain starts further along the source when
-// playback is faster. Pitch resamples that stretch. To play higher, the
-// stretch runs longer and the resampler reads it faster, which brings the
-// length back; lower is the other way around. One output frame is one input
-// frame of the resampler, so the pitch change does not play a second,
-// delayed copy. At unity both are transparent.
+// Speed is a time stretch. Bungee is the default; a phase vocoder and an
+// overlap-add of waveform grains are the other two. The next grain starts
+// further along the source when playback is faster. Pitch resamples that
+// stretch. To play higher, the stretch runs longer and the resampler reads
+// it faster, which brings the length back; lower is the other way around.
+// One output frame is one input frame of the resampler, so the pitch change
+// does not play a second, delayed copy. At unity each stretch is transparent.
 type rateReader struct {
 	src io.Reader
 	ctl *rateControl
@@ -161,6 +155,9 @@ type rateReader struct {
 	pvMag    []float64
 	pvPhase  []float64
 	pvPeaks  []int
+
+	// b is the Bungee Basic stretcher. The audio thread owns it.
+	b bungee
 }
 
 func newRateReader(src io.Reader, ctl *rateControl) *rateReader {
@@ -295,11 +292,16 @@ func (r *rateReader) placeGrain() error {
 		r.pvHave = false
 		r.pvCopied = false
 		r.pvHa = 0
+		r.b.reset()
 	}
-	if algo == StretchOverlapAdd {
+	switch algo {
+	case StretchOverlapAdd:
 		return r.placeOverlap()
+	case StretchPhaseVocoder:
+		return r.placeVocoder()
+	default:
+		return r.placeBungee()
 	}
-	return r.placeVocoder()
 }
 
 func (r *rateReader) placeOverlap() error {

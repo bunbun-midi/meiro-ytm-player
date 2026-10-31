@@ -7,6 +7,9 @@ go_library(
         "fade.go",
         "null.go",
         "player.go",
+        "rate.go",
+        "vocoder.go",
+        "bungee.go",
         "window_unix.go",
         "window_windows.go",
     ],
@@ -22,6 +25,7 @@ go_test(
         "fade_test.go",
         "integration_test.go",
         "player_test.go",
+        "rate_test.go",
     ],
     embed = [":player"],
 )

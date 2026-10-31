@@ -24,13 +24,24 @@ var pvWindow = func() [pvN]float64 {
 type Stretch int
 
 const (
+	// StretchBungee is Bungee Basic's phase vocoder. It is the default.
+	StretchBungee Stretch = iota
 	// StretchPhaseVocoder keeps the recording's pitch by resynthesising each
-	// frequency's phase. It is the default.
-	StretchPhaseVocoder Stretch = iota
+	// frequency's phase on its own.
+	StretchPhaseVocoder
 	// StretchOverlapAdd repeats and overlaps grains of the waveform, sliding
 	// each one so it lines up with the grain before it.
 	StretchOverlapAdd
 )
+
+func knownStretch(stretch Stretch) Stretch {
+	switch stretch {
+	case StretchBungee, StretchPhaseVocoder, StretchOverlapAdd:
+		return stretch
+	default:
+		return StretchBungee
+	}
+}
 
 func (r *rateReader) placeVocoder() error {
 	need := int64(math.Floor(r.inPos)) + pvN + 2

@@ -58,7 +58,7 @@ var settingsRows = []settingsRow{
 
 	{key: "h-look", heading: "Appearance and sound"},
 	{key: "appearance", search: "theme appearance system light dark colour color colours colors violet indigo blue sky teal green lime amber orange red rose orchid hue palette tonal spot vibrant expressive neutral monochrome artwork dynamic matugen source", card: (*app).appearanceCard},
-	{key: "sound", search: "sound audio normalize loudness logarithmic equaliser volume phase vocoder overlap-add time stretch speed", card: (*app).soundCard},
+	{key: "sound", search: "sound audio normalize loudness logarithmic equaliser volume bungee phase vocoder overlap-add time stretch speed", card: (*app).soundCard},
 
 	{key: "h-playback", heading: "Playback"},
 	{key: "playback", search: "auto skip disliked songs thumbs down", card: (*app).playbackCard},
@@ -378,12 +378,15 @@ func (a *app) soundCard(c *ui.Context) {
 			}
 		})
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
-			settingLabel(c, "Time stretch", "How the speed slider changes the pace. Phase vocoder is the default.").Grow(1)
+			settingLabel(c, "Time stretch", "How the speed slider changes the pace. Bungee is the default.").Grow(1)
 			picked := 0
-			if a.settings.TimeStretch == settings.TimeStretchOverlapAdd {
+			switch a.settings.TimeStretch {
+			case settings.TimeStretchPhaseVocoder:
 				picked = 1
+			case settings.TimeStretchOverlapAdd:
+				picked = 2
 			}
-			labels := []string{settings.TimeStretchPhaseVocoder, settings.TimeStretchOverlapAdd}
+			labels := []string{settings.TimeStretchBungee, settings.TimeStretchPhaseVocoder, settings.TimeStretchOverlapAdd}
 			if m3.ButtonGroup(c, "time-stretch", &picked, labels, nil) {
 				a.setTimeStretch(labels[picked])
 			}

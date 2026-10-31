@@ -21,9 +21,9 @@ A user plays a track, controls the player bar, edits the queue, and finds the sa
   semitone; the one that matches stays highlighted. The numbers on `+10`,
   `+11`, `+12` and `−10`, `−11`, `−12` are shown in full. Songs and podcasts
   each remember both. A pitch change does not change the pace, and it does
-  not play a second, delayed copy of the sound. The speed uses a phase
-  vocoder. Settings → Sound → Time stretch switches it to overlap-add, and
-  the change applies while a track is playing.
+  not play a second, delayed copy of the sound. The speed uses Bungee.
+  Settings → Sound → Time stretch can switch it to the phase vocoder or to
+  overlap-add, and the change applies while a track is playing.
 - `play-mini` shows and controls the mini player.
 - `play-mini-navigation` opens an artist page from the mini player's track menu and returns to the main window.
 - `play-metadata-links` opens individually linked artists and albums from the main player bar and Now Playing. Hover underlines names; Tab/Enter activates them. Now Playing closes with its usual animation before navigating. Audio, queue and position continue unchanged. Unknown destinations remain plain text; the notch and tray mini player retain their existing metadata presentation.

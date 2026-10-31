@@ -13,7 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- **The speed slider uses a phase vocoder.** Settings → Sound → Time stretch can switch it to overlap-add, and the change applies while a track is playing.
+- **The speed slider uses Bungee.** Settings → Sound → Time stretch can switch it to the phase vocoder or to overlap-add, and the change applies while a track is playing.
 - **Playback speed is a slider.** It runs from 0.05× to 1.8× in steps of 0.01, in the player bar, the full player and the tray's mini player. Dragging the speed or the pitch changes the sound straight away, and the track keeps playing through it. The pitch stays put when only the speed moves. A speed that was above 1.8× now plays at 1.8×. Songs and podcasts still remember their own speed.
 
 ### Fixed

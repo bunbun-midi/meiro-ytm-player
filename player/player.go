@@ -478,9 +478,7 @@ func (p *Player) SetPlayback(ctx context.Context, speed, semitones float64) erro
 // SetStretch chooses the time-stretch the speed slider uses. The stream
 // playing takes it on the next grain, without restarting.
 func (p *Player) SetStretch(stretch Stretch) {
-	if stretch != StretchOverlapAdd {
-		stretch = StretchPhaseVocoder
-	}
+	stretch = knownStretch(stretch)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.stretch = stretch

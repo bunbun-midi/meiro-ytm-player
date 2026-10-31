@@ -732,9 +732,12 @@ func (a *app) applySpeed() {
 // setTimeStretch remembers which algorithm the speed slider uses and applies
 // it to the stream that is playing.
 func (a *app) setTimeStretch(name string) {
-	if name == settings.TimeStretchOverlapAdd {
+	switch name {
+	case settings.TimeStretchPhaseVocoder:
+		a.settings.TimeStretch = settings.TimeStretchPhaseVocoder
+	case settings.TimeStretchOverlapAdd:
 		a.settings.TimeStretch = settings.TimeStretchOverlapAdd
-	} else {
+	default:
 		a.settings.TimeStretch = ""
 	}
 	a.applyStretch()
@@ -743,8 +746,11 @@ func (a *app) setTimeStretch(name string) {
 
 // applyStretch publishes the saved time-stretch to the player.
 func (a *app) applyStretch() {
-	stretch := player.StretchPhaseVocoder
-	if a.settings.TimeStretch == settings.TimeStretchOverlapAdd {
+	stretch := player.StretchBungee
+	switch a.settings.TimeStretch {
+	case settings.TimeStretchPhaseVocoder:
+		stretch = player.StretchPhaseVocoder
+	case settings.TimeStretchOverlapAdd:
 		stretch = player.StretchOverlapAdd
 	}
 	a.player.SetStretch(stretch)

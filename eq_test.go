@@ -114,8 +114,8 @@ func TestCrossfadeSwitchAndSliderReachThePlayerAndSurviveARestart(t *testing.T) 
 
 func TestTimeStretchSetting(t *testing.T) {
 	a := newTestApp(t)
-	if a.player.Stretch() != player.StretchPhaseVocoder {
-		t.Fatalf("stretch = %v, want the phase vocoder", a.player.Stretch())
+	if a.player.Stretch() != player.StretchBungee {
+		t.Fatalf("stretch = %v, want Bungee", a.player.Stretch())
 	}
 	a.router.Push("/settings")
 	tt := ui.NewTester(a.view, 1000, 900)
@@ -123,8 +123,15 @@ func TestTimeStretchSetting(t *testing.T) {
 	if err := tt.Click("Search settings"); err != nil {
 		t.Fatal(err)
 	}
-	tt.Type("phase vocoder")
+	tt.Type("bungee")
 	tt.Frame()
+	if err := tt.Click("Phase vocoder"); err != nil {
+		t.Fatalf("%v in %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if a.settings.TimeStretch != settings.TimeStretchPhaseVocoder || a.player.Stretch() != player.StretchPhaseVocoder {
+		t.Fatalf("setting %q, player %v", a.settings.TimeStretch, a.player.Stretch())
+	}
 	if err := tt.Click("Overlap-add"); err != nil {
 		t.Fatalf("%v in %q", err, tt.Texts())
 	}
@@ -132,11 +139,11 @@ func TestTimeStretchSetting(t *testing.T) {
 	if a.settings.TimeStretch != settings.TimeStretchOverlapAdd || a.player.Stretch() != player.StretchOverlapAdd {
 		t.Fatalf("setting %q, player %v", a.settings.TimeStretch, a.player.Stretch())
 	}
-	if err := tt.Click("Phase vocoder"); err != nil {
+	if err := tt.Click("Bungee"); err != nil {
 		t.Fatalf("%v in %q", err, tt.Texts())
 	}
 	tt.Frame()
-	if a.settings.TimeStretch != "" || a.player.Stretch() != player.StretchPhaseVocoder {
+	if a.settings.TimeStretch != "" || a.player.Stretch() != player.StretchBungee {
 		t.Fatalf("setting %q, player %v", a.settings.TimeStretch, a.player.Stretch())
 	}
 }

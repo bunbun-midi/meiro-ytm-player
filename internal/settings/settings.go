@@ -121,8 +121,8 @@ type Settings struct {
 	MusicPitch   float64 `json:"musicPitch,omitempty"`
 	// HistoryLimit is how many plays are kept. 0 means the default.
 	HistoryLimit int `json:"historyLimit,omitempty"`
-	// TimeStretch is how the speed slider stretches time: "Phase vocoder"
-	// or "Overlap-add". Empty means the phase vocoder.
+	// TimeStretch is how the speed slider stretches time: "Bungee",
+	// "Phase vocoder" or "Overlap-add". Empty means Bungee.
 	TimeStretch string `json:"timeStretch,omitempty"`
 }
 
@@ -190,8 +190,9 @@ const (
 )
 
 // The time-stretch algorithms the speed slider can use. Empty in a settings
-// file means the phase vocoder.
+// file means Bungee.
 const (
+	TimeStretchBungee       = "Bungee"
 	TimeStretchPhaseVocoder = "Phase vocoder"
 	TimeStretchOverlapAdd   = "Overlap-add"
 )
@@ -342,7 +343,9 @@ func Parse(data []byte) (Settings, error) {
 	} else if read.HistoryLimit > MaxHistoryLimit {
 		read.HistoryLimit = MaxHistoryLimit
 	}
-	if read.TimeStretch != TimeStretchOverlapAdd {
+	switch read.TimeStretch {
+	case TimeStretchPhaseVocoder, TimeStretchOverlapAdd:
+	default:
 		read.TimeStretch = ""
 	}
 	return read, nil
