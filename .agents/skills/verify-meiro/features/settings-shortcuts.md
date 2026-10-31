@@ -11,7 +11,7 @@ A user changes the theme and equaliser, rebinds shortcuts, clears history, opens
 - `settings-eq` toggles `Equaliser on`, picks a preset, and changes slider gains live without restarting the current stream.
 - `settings-shortcuts` shows, records, conflicts and resets shortcuts, and runs the defaults.
 - `keyboard-navigation` covers Tab and Shift+Tab through row and card actions, menu arrows/Home/End/Escape, Shift+F10 context menus, player tabs, queue selection/activation, and keyboard sliders.
-- `settings-history` clears listening history with `Clear history`, then `Delete all plays`.
+- `settings-history` clears listening history with `Clear history`, then `Delete all plays`. The same card sets how many plays to keep and opens `Show history`, which searches the track and artist, limits the list to a range of days, and pages once there are more than 100 matches.
 - `settings-support` opens `Open logs folder` and `Report a problem` with a prefilled issue.
 - `settings-lastfm` connects, pauses and disconnects Last.fm, and scrobbles qualifying plays.
 - `settings-top-bar` keeps global music search and the account out of the app-owned top bar; Settings has a playlist-style search button that filters settings in place, while Stats has no search entry point.

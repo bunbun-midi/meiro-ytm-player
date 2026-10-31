@@ -62,14 +62,6 @@ type nowPlayingState struct {
 	miniOpen bool
 	// speedMenu is the key of the speed button whose panel is open, or empty.
 	speedMenu string
-	// speedHeld is set while the speed slider is being dragged, and
-	// speedDraft is the value it shows. pitchHeld and pitchDraft are the
-	// same for the pitch slider. The player changes when the drag ends:
-	// every step would restart the decode.
-	speedHeld  bool
-	speedDraft float64
-	pitchHeld  bool
-	pitchDraft float64
 }
 
 // relatedState is the related songs of the track playing.

@@ -149,6 +149,13 @@ type app struct {
 	// until they confirm or keep it.
 	confirmClearHistory bool
 	historyWriter       history.Writer
+	historyLimitText    string
+	historyLimitError   string
+	historySearch       string
+	historyFrom         string
+	historyTo           string
+	historyPageIndex    int
+	historyView         historyMemo
 	statsRange          int // days the stats page covers: 7, 14 or 30
 	stats               statsMemo
 
@@ -215,6 +222,7 @@ func newApp() *app {
 	a.scrobble = newScrobbler()
 	a.playback = newPlayback(audio.NewURLs(resolveAudio(youtube.NewClient(youtube.Options{}))), a.settings.Volume)
 	a.cacheSongsText = strconv.Itoa(a.settings.CacheSongs)
+	a.historyLimitText = strconv.Itoa(settings.ClampHistoryLimit(a.settings.HistoryLimit))
 	a.run = func(work func()) {
 		go func() {
 			defer a.recoverBackground("background work")

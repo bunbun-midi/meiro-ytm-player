@@ -9,14 +9,15 @@ import (
 	"os"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/elianiva/meiro/internal/fsutil"
 )
 
-// MaxEntries caps the history: about a year of heavy listening. Old entries
-// go first when it overflows.
+// MaxEntries is the default cap: about a year of heavy listening. The app
+// can keep more when the user asks it to. Old entries go first either way.
 const MaxEntries = 5000
 
 // Entry is one played track.
@@ -30,11 +31,24 @@ type Entry struct {
 // Append adds entries to the end of a history and drops its oldest entries
 // beyond MaxEntries, in place.
 func Append(history []Entry, entries ...Entry) []Entry {
+	return AppendN(history, MaxEntries, entries...)
+}
+
+// AppendN adds entries and drops the oldest beyond limit. A limit below 1
+// keeps MaxEntries.
+func AppendN(history []Entry, limit int, entries ...Entry) []Entry {
 	history = append(history, entries...)
-	if len(history) > MaxEntries {
-		// Slide the newest entries down in place: reallocating the whole
-		// history on every play once it is full copied it all each time.
-		history = slices.Delete(history, 0, len(history)-MaxEntries)
+	return Trim(history, limit)
+}
+
+// Trim drops the oldest entries beyond limit, in place. A limit below 1
+// keeps MaxEntries.
+func Trim(history []Entry, limit int) []Entry {
+	if limit < 1 {
+		limit = MaxEntries
+	}
+	if len(history) > limit {
+		history = slices.Delete(history, 0, len(history)-limit)
 	}
 	return history
 }
@@ -230,4 +244,79 @@ func top(counts map[string]*Count, n int) []Count {
 func startOfDay(t time.Time) time.Time {
 	y, m, d := t.Date()
 	return time.Date(y, m, d, 0, 0, 0, 0, t.Location())
+}
+
+// PageSize is how many plays a history page holds. A result no larger than
+// this is the whole match; a larger match is split into pages so the caller
+// never receives every row at once.
+const PageSize = 100
+
+// Query chooses which plays Search returns. From is inclusive and zero means
+// no lower bound. Until is exclusive and zero means no upper bound. Text is
+// a substring of the track name and the artist, ignoring case. Page is
+// zero-based, newest plays first.
+type Query struct {
+	Text  string
+	From  time.Time
+	Until time.Time
+	Page  int
+}
+
+// Page is one page of a search. Total is every match, not just this page.
+type Page struct {
+	Entries []Entry
+	Total   int
+	Page    int
+	Pages   int
+}
+
+// Search returns one page of the plays that match q, newest first. It copies
+// at most PageSize entries, however many match.
+func Search(entries []Entry, q Query) Page {
+	q.Text = strings.ToLower(strings.TrimSpace(q.Text))
+	if q.Page < 0 {
+		q.Page = 0
+	}
+	page, total := searchPage(entries, q)
+	pages := 1
+	if total > PageSize {
+		pages = (total + PageSize - 1) / PageSize
+	}
+	if total > 0 && q.Page >= pages {
+		q.Page = pages - 1
+		page, total = searchPage(entries, q)
+	}
+	if total == 0 {
+		q.Page = 0
+	}
+	return Page{Entries: page, Total: total, Page: q.Page, Pages: pages}
+}
+
+func searchPage(entries []Entry, q Query) ([]Entry, int) {
+	start := q.Page * PageSize
+	page := make([]Entry, 0, PageSize)
+	total := 0
+	for i := len(entries) - 1; i >= 0; i-- {
+		if !matchEntry(entries[i], q) {
+			continue
+		}
+		if total >= start && len(page) < PageSize {
+			page = append(page, entries[i])
+		}
+		total++
+	}
+	return page, total
+}
+
+func matchEntry(e Entry, q Query) bool {
+	if !q.From.IsZero() && e.PlayedAt.Before(q.From) {
+		return false
+	}
+	if !q.Until.IsZero() && !e.PlayedAt.Before(q.Until) {
+		return false
+	}
+	if q.Text == "" {
+		return true
+	}
+	return strings.Contains(strings.ToLower(e.Title+" "+e.Artist), q.Text)
 }

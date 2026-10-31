@@ -19,7 +19,7 @@ func (a *app) recordHistory(item youtube.MusicItem) {
 		return
 	}
 	a.loadHistory()
-	a.history = history.Append(a.history, history.Entry{
+	a.history = history.AppendN(a.history, a.historyLimit(), history.Entry{
 		VideoID:  item.VideoID,
 		Title:    item.Title,
 		Artist:   item.Subtitle,
@@ -42,7 +42,7 @@ func (a *app) loadHistory() {
 		if a.historyDiscard {
 			entries, pending, a.historyDiscard = nil, true, false
 		}
-		a.history = history.Append(entries, a.history...)
+		a.history = history.AppendN(entries, a.historyLimit(), a.history...)
 		a.historyLoaded, a.historyLoading = true, false
 		if pending {
 			a.saveHistory()

@@ -8,11 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- **Shift a song's pitch without changing its speed.** The playback control sets the pitch from −12 to +12 semitones, in steps of a tenth. The track continues from where it was. Songs and podcasts remember their own pitch.
+- **Shift a song's pitch without changing its speed.** The playback control sets the pitch from −12 to +12 semitones, in steps of a tenth, and the key follows the slider as it moves. Buttons for 0 and for each semitone from −12 to +12 set the same pitch. Songs and podcasts remember their own pitch.
+- **Choose how much listening history to keep, and read it.** Settings sets how many plays are kept, up to 1,000,000. Show history lists them, a page at a time once there are more than 100, and can search the track and artist or limit the list to a range of days.
 
 ### Changed
 
-- **Playback speed is a slider.** It runs from 0.05× to 1.8× in steps of 0.01, in the player bar, the full player and the tray's mini player. The pitch stays put, and the track continues from where it was. A speed that was above 1.8× now plays at 1.8×. Songs and podcasts still remember their own speed.
+- **Playback speed is a slider.** It runs from 0.05× to 1.8× in steps of 0.01, in the player bar, the full player and the tray's mini player. Dragging the speed or the pitch changes the sound straight away, and the track keeps playing through it. The pitch stays put when only the speed moves. A speed that was above 1.8× now plays at 1.8×. Songs and podcasts still remember their own speed.
+
+### Fixed
+
+- **Semitone buttons show +10, +11, +12 and −10, −11, −12 in full.**
+- **Shifting the pitch plays one copy of the sound.**
 
 ## [0.5.1] - 2026-10-31
 

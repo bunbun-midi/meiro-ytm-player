@@ -116,6 +116,15 @@ func TestMiniPlayerShowsAndControlsWhatPlays(t *testing.T) {
 	if a.volume != 0 {
 		t.Fatalf("clicking Mute did not mute: volume = %v", a.volume)
 	}
+	if err := tt.Click("1×"); err != nil {
+		t.Fatalf("no speed button: %v in %q", err, tt.Texts())
+	}
+	for _, label := range []string{"Set pitch to +12 semitones", "Set pitch to −12 semitones"} {
+		box, ok := tt.Find(label)
+		if !ok || box.W < 16 || box.X < 0 || box.X+box.W > miniWidth || box.Y < 0 || box.Y+box.H > miniHeight {
+			t.Fatalf("%s at %v, found %v", label, box, ok)
+		}
+	}
 }
 
 func TestGoToArtistFromMiniPlayerOpensTheArtistPage(t *testing.T) {

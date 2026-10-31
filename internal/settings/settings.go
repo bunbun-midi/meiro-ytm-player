@@ -19,6 +19,7 @@ import (
 
 	"github.com/elianiva/meiro/internal/audio"
 	"github.com/elianiva/meiro/internal/fsutil"
+	"github.com/elianiva/meiro/internal/history"
 	"github.com/elianiva/meiro/m3"
 )
 
@@ -118,6 +119,8 @@ type Settings struct {
 	MusicSpeed   float64 `json:"musicSpeed,omitempty"`
 	PodcastPitch float64 `json:"podcastPitch,omitempty"`
 	MusicPitch   float64 `json:"musicPitch,omitempty"`
+	// HistoryLimit is how many plays are kept. 0 means the default.
+	HistoryLimit int `json:"historyLimit,omitempty"`
 }
 
 // TrayMark names one of the menu bar icon styles.
@@ -174,6 +177,25 @@ func ClampZoom(percent int) int {
 		return DefaultZoom
 	}
 	return min(max(percent, MinZoom), MaxZoom)
+}
+
+// How many plays the listening history keeps.
+const (
+	// MaxHistoryLimit is as large as the history setting goes. Past this the
+	// file and the memory it takes stop being reasonable.
+	MaxHistoryLimit = 1_000_000
+)
+
+// ClampHistoryLimit reads 0, and anything below 1, as the default cap.
+// Larger values stop at MaxHistoryLimit.
+func ClampHistoryLimit(n int) int {
+	if n < 1 {
+		return history.MaxEntries
+	}
+	if n > MaxHistoryLimit {
+		return MaxHistoryLimit
+	}
+	return n
 }
 
 // clone returns a copy that shares no memory with s, for work that outlives
@@ -305,6 +327,11 @@ func Parse(data []byte) (Settings, error) {
 		read.NotifyTrack, read.ShowTray = false, false
 	}
 	read.CrossfadeSeconds = ClampCrossfade(read.CrossfadeSeconds)
+	if read.HistoryLimit < 0 {
+		read.HistoryLimit = 0
+	} else if read.HistoryLimit > MaxHistoryLimit {
+		read.HistoryLimit = MaxHistoryLimit
+	}
 	return read, nil
 }
 

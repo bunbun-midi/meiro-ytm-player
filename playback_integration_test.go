@@ -1072,8 +1072,28 @@ func TestEpisodesAndMusicPlayAtTheirOwnChosenSpeeds(t *testing.T) {
 	waitFor(t, func() bool { a.poll(); return a.player.Speed() == 0.05 && a.player.Playing() })
 	chooseRate(t, tt, "Pitch in semitones", ui.KeyEnd)
 	waitFor(t, func() bool { a.poll(); return a.player.Pitch() == 12 && a.player.Playing() })
-	if a.settings.MusicSpeed != 0.05 || a.settings.MusicPitch != 12 || a.settings.PodcastSpeed != 1.8 || a.settings.PodcastPitch != 0 {
-		t.Errorf("music %v× %+v st, podcasts %v× %+v st, want 0.05× +12 and the episode's 1.8×",
+	plus, ok := tt.Find("Set pitch to +12 semitones")
+	if !ok || plus.W < 16 || plus.X < 0 || plus.X+plus.W > 1000 {
+		t.Fatalf("+12 semitone button at %v, found %v", plus, ok)
+	}
+	if err := tt.Click("Set pitch to −5 semitones"); err != nil {
+		t.Fatalf("no semitone button: %v in %q", err, tt.Texts())
+	}
+	waitFor(t, func() bool { a.poll(); return a.player.Pitch() == -5 && a.player.Speed() == 0.05 && a.player.Playing() })
+	if a.settings.MusicPitch != -5 || a.settings.PodcastPitch != 0 {
+		t.Fatalf("music pitch %v, podcast pitch %v, want −5 and 0", a.settings.MusicPitch, a.settings.PodcastPitch)
+	}
+	for _, label := range []string{"+10", "+11", "+12", "−10", "−11", "−12", "0"} {
+		if _, ok := tt.Find(label); !ok {
+			t.Fatalf("semitone button %s is not shown in %q", label, tt.Texts())
+		}
+	}
+	if err := tt.Click("Set pitch to 0 semitones"); err != nil {
+		t.Fatalf("no 0 semitone button: %v in %q", err, tt.Texts())
+	}
+	waitFor(t, func() bool { a.poll(); return a.player.Pitch() == 0 && a.player.Speed() == 0.05 && a.player.Playing() })
+	if a.settings.MusicSpeed != 0.05 || a.settings.MusicPitch != 0 || a.settings.PodcastSpeed != 1.8 || a.settings.PodcastPitch != 0 {
+		t.Errorf("music %v× %+v st, podcasts %v× %+v st, want 0.05× 0 and the episode's 1.8×",
 			a.settings.MusicSpeed, a.settings.MusicPitch, a.settings.PodcastSpeed, a.settings.PodcastPitch)
 	}
 	tt.Key(0, ui.KeyEscape)

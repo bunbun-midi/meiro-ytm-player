@@ -1622,6 +1622,97 @@ func TestClearHistoryFromSettings(t *testing.T) {
 	}
 }
 
+// The history setting keeps however many plays the user asks for, and Show
+// history searches the whole log while listing one page at a time.
+func TestHistoryLimitAndBrowser(t *testing.T) {
+	a := newTestApp(t)
+	a.historyPath = filepath.Join(t.TempDir(), "history.json")
+	a.historyLoaded = true
+	day := time.Date(2026, 6, 1, 15, 0, 0, 0, time.Local)
+	a.history = []history.Entry{
+		{VideoID: "old", Title: "Needle", Artist: "Hidden", PlayedAt: time.Date(2020, 1, 15, 9, 0, 0, 0, time.Local)},
+		{VideoID: "a", Title: "Alpha", Artist: "One", PlayedAt: day},
+		{VideoID: "b", Title: "Beta", Artist: "Two", PlayedAt: day.Add(time.Minute)},
+		{VideoID: "c", Title: "Gamma", Artist: "Three", PlayedAt: day.Add(2 * time.Minute)},
+	}
+	for i := range 120 {
+		a.history = append(a.history, history.Entry{
+			VideoID: strconv.Itoa(i), Title: "Filler " + strconv.Itoa(i), Artist: "Crowd",
+			PlayedAt: day.Add(time.Duration(i+3) * time.Minute),
+		})
+	}
+	a.router.Push("/settings")
+	tt := ui.NewTester(a.view, 1000, 900)
+	tt.Frame()
+	if err := tt.Click("Search settings"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("history")
+	tt.Frame()
+	if err := tt.Click("Number of plays to keep"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Key(ui.Cmd, ui.KeyA)
+	tt.Type("2")
+	tt.Key(0, ui.KeyEnter)
+	tt.Frame()
+	if a.settings.HistoryLimit != 2 || len(a.history) != 2 {
+		t.Fatalf("limit %d, kept %d plays (%+v)", a.settings.HistoryLimit, len(a.history), a.history)
+	}
+	if a.history[0].Title == "Needle" || a.history[1].Title == "Needle" {
+		t.Fatalf("the oldest play was kept: %+v", a.history)
+	}
+
+	a.history = nil
+	a.historyLoaded = true
+	a.setHistoryLimit(history.MaxEntries)
+	needle := history.Entry{VideoID: "old", Title: "Needle", Artist: "Hidden", PlayedAt: time.Date(2020, 1, 15, 9, 0, 0, 0, time.Local)}
+	a.history = []history.Entry{needle}
+	for i := range 150 {
+		a.history = append(a.history, history.Entry{
+			VideoID: "f" + strconv.Itoa(i), Title: "Filler " + strconv.Itoa(i), Artist: "Crowd",
+			PlayedAt: day.Add(time.Duration(i) * time.Minute),
+		})
+	}
+	if err := tt.Click("Show history"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("Page 1 of 2") || !tt.HasText("Filler 149") || tt.HasText("Needle") {
+		t.Fatalf("first page = %q", tt.Texts())
+	}
+	if err := tt.Click("Next page"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("Page 2 of 2") || !tt.HasText("Needle") {
+		t.Fatalf("second page = %q", tt.Texts())
+	}
+	if err := tt.Click("Search history"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("hidden")
+	tt.Frame()
+	if !tt.HasText("Needle") || !tt.HasText("1 play") || tt.HasText("Filler 149") {
+		t.Fatalf("search = %q", tt.Texts())
+	}
+	tt.Key(ui.Cmd, ui.KeyA)
+	tt.Key(0, ui.KeyBackspace)
+	tt.Frame()
+	if err := tt.Click("From"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("2020-01-15")
+	if err := tt.Click("To"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("2020-01-15")
+	tt.Frame()
+	if !tt.HasText("Needle") || !tt.HasText("1 play") || tt.HasText("Filler 0") {
+		t.Fatalf("date range = %q", tt.Texts())
+	}
+}
+
 // Clearing while the history is still being read must not let the read bring
 // the old plays back.
 func TestClearHistoryWhileItLoads(t *testing.T) {

@@ -15,6 +15,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
+	"github.com/elianiva/meiro/internal/history"
 	"github.com/elianiva/meiro/internal/settings"
 	"github.com/elianiva/meiro/m3"
 )
@@ -246,5 +247,10 @@ func (a *app) applyReloadedSettings(previous settings.Settings) {
 		if cache := a.currentAudioCache(); cache != nil {
 			a.run(func() { cache.SetLimit(s.CacheSongs) })
 		}
+	}
+	if settings.ClampHistoryLimit(s.HistoryLimit) != settings.ClampHistoryLimit(previous.HistoryLimit) {
+		a.historyLimitText = strconv.Itoa(settings.ClampHistoryLimit(s.HistoryLimit))
+		a.history = history.Trim(a.history, a.historyLimit())
+		a.saveHistory()
 	}
 }

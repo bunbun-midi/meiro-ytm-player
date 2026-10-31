@@ -25,6 +25,7 @@ const (
 	routeSearch
 	routeSettings
 	routeStats
+	routeHistory
 	routeAlbum
 	routePlaylist
 	routeArtist
@@ -157,6 +158,10 @@ func appRoutes() []route {
 		{
 			id: routeStats, pattern: "/stats", title: "Stats", heading: heading("Listening stats"), nav: routeSettings, bare: true,
 			view: (*app).statsPage, open: (*app).loadHistory,
+		},
+		{
+			id: routeHistory, pattern: "/history", title: "History", heading: heading("Listening history"), nav: routeSettings, bare: true,
+			view: (*app).historyPage, open: (*app).loadHistory,
 		},
 		{
 			id: routeAlbum, empty: emptyMessage{"This album is empty", "YouTube Music returned no songs for it."}, pattern: "/album/{id}", title: "Album", target: youtube.TargetAlbum,

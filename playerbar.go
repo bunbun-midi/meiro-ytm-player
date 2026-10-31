@@ -213,9 +213,7 @@ func (a *app) speedControl(c *ui.Context, key string) {
 		anchor.Tooltip("Pitch " + pitchLabel(pitch))
 	}
 	// A panel ignores the press that lands on the button that opened it, so
-	// the button closes it, as the account menu's button does. Another
-	// speed button, on the full player or the mini player, leaves a drag
-	// on this one alone.
+	// the button closes it, as the account menu's button does.
 	wasOpen := a.nowPlaying.speedMenu == key
 	if anchor.Clicked() {
 		if wasOpen {
@@ -225,20 +223,28 @@ func (a *app) speedControl(c *ui.Context, key string) {
 		}
 	}
 	if a.nowPlaying.speedMenu != key {
-		if wasOpen {
-			a.finishPlaybackDrag()
-		}
 		return
 	}
 	open := true
+	presetW, textSize := pitchPresetMetrics(c)
+	const (
+		presetGap float32 = 2
+		padX      float32 = 8
+	)
+	// Width includes the padding. The row is a 0 button beside twelve
+	// semitone buttons, and 336 is as wide as a popup can be in the tray's
+	// mini player and still sit 4 DIPs inside that window.
+	inner := 13*presetW + 12*presetGap
+	panelW := max(float32(280), inner+padX*2)
 	ui.PopoverBase(c, anchor, &open, func(panel ui.Element) {
-		panel.Key("playback-"+key).Width(280).Padding(12, 16).Radius(m3.Large).Margin(8, 0, 0, 0).
+		panel.Key("playback-"+key).Width(panelW).Padding(12, padX).Radius(m3.Large).Margin(8, 0, 0, 0).
 			Background(sc.SurfaceContainerHigh)
 		m3.Elevation(c, panel, 3)
 		ui.Column(c).Gap(12).Children(func() {
 			m3.Text(c, m3.LabelMedium, "Playback").TextColor(sc.OnSurfaceVariant)
-			a.rateSlider(c, "Speed", "Playback speed", key+"-speed", player.MinSpeed, player.MaxSpeed, 0.01, &a.nowPlaying.speedHeld, &a.nowPlaying.speedDraft, speed, speedLabel, a.setSpeed)
-			a.rateSlider(c, "Pitch", "Pitch in semitones", key+"-pitch", player.MinPitch, player.MaxPitch, 0.1, &a.nowPlaying.pitchHeld, &a.nowPlaying.pitchDraft, pitch, pitchLabel, a.setPitch)
+			a.rateSlider(c, "Speed", "Playback speed", key+"-speed", player.MinSpeed, player.MaxSpeed, 0.01, speed, speedLabel, a.setSpeed)
+			a.rateSlider(c, "Pitch", "Pitch in semitones", key+"-pitch", player.MinPitch, player.MaxPitch, 0.1, pitch, pitchLabel, a.setPitch)
+			a.pitchPresets(c, key, pitch, presetW, textSize)
 			if m3.Button(c, m3.ButtonSpec{Label: "Normal", Kind: m3.TextOnly, Size: m3.Small40, Key: key + "-reset"}).Clicked() {
 				a.resetPlaybackRate()
 			}
@@ -246,44 +252,112 @@ func (a *app) speedControl(c *ui.Context, key string) {
 	})
 	if !open {
 		a.nowPlaying.speedMenu = ""
-		a.finishPlaybackDrag()
 	}
 }
 
-// rateSlider is one labeled slider of the playback panel. held and draft
-// keep the value under the pointer until it is released; commit runs then,
-// and when a key changes it.
-func (a *app) rateSlider(c *ui.Context, title, label, key string, lo, hi, step float64, held *bool, draft *float64, value float64, format func(float64) string, commit func(float64)) {
-	sc := m3.Of(c).Scheme
-	if *held {
-		value = *draft
+// semitoneLabel names an integer pitch the way the preset buttons do,
+// "+5", "0" or "−5". The minus is the typographic minus, not a hyphen.
+func semitoneLabel(semitones int) string {
+	switch {
+	case semitones > 0:
+		return "+" + strconv.Itoa(semitones)
+	case semitones < 0:
+		return "−" + strconv.Itoa(-semitones)
+	default:
+		return "0"
 	}
+}
+
+// pitchPresetMetrics is the width and type size of one semitone button.
+// The width fits the widest label, "+12" or "−12", with a little air around
+// the glyphs. The size steps down only when that row, plus the 0 button,
+// would no longer fit in the tray's mini player.
+func pitchPresetMetrics(c *ui.Context) (width, size float32) {
+	const (
+		gap      float32 = 2
+		padX     float32 = 8
+		panelMax float32 = 336
+	)
+	for _, size := range []float32{m3.LabelSmall.Size, 10, 9} {
+		widest := max(measurePreset(c, "+12", size), measurePreset(c, "−12", size)) + 4
+		inner := 13*widest + 12*gap
+		if inner+padX*2 <= panelMax || size == 9 {
+			return widest, size
+		}
+	}
+	return 0, 9
+}
+
+func measurePreset(c *ui.Context, text string, size float32) float32 {
+	w, _ := c.MeasureText(0, ui.Span{
+		Text: text, Size: size, Weight: m3.LabelSmall.Emphasis, Features: "tnum",
+	})
+	return w
+}
+
+// pitchPresets is the 0 button beside two rows of keys, +1 through +12 and
+// −1 through −12. The one that matches the current pitch is lit. Choosing
+// one sets the pitch and leaves the speed alone.
+func (a *app) pitchPresets(c *ui.Context, key string, pitch float64, buttonW, textSize float32) {
+	ui.Row(c.Key(key + "-presets")).Gap(2).AlignItems(ui.Stretch).Label("Semitone presets").Children(func() {
+		a.pitchPreset(c, key, 0, pitch, buttonW, textSize, 62, false)
+		ui.Column(c).Grow(1).Gap(6).Children(func() {
+			for _, direction := range []int{1, -1} {
+				row := "up"
+				if direction < 0 {
+					row = "down"
+				}
+				ui.Row(c.Key(key + "-presets-" + row)).Gap(2).Children(func() {
+					for amount := 1; amount <= 12; amount++ {
+						a.pitchPreset(c, key, direction*amount, pitch, buttonW, textSize, 28, true)
+					}
+				})
+			}
+		})
+	})
+}
+
+func (a *app) pitchPreset(c *ui.Context, key string, semitones int, pitch float64, buttonW, textSize, height float32, grow bool) {
+	sc := m3.Of(c).Scheme
+	label := semitoneLabel(semitones)
+	name := "Set pitch to " + label + " semitones"
+	delta := pitch - float64(semitones)
+	if delta < 0 {
+		delta = -delta
+	}
+	chosen := delta < 0.001
+	bg, fg := sc.SurfaceContainerHighest, sc.OnSurface
+	if chosen {
+		bg, fg = sc.Secondary, sc.OnSecondary
+	}
+	b := ui.ButtonBase(c.Key(key + "-st-" + strconv.Itoa(semitones))).Shrink(0).MinWidth(buttonW).Height(height).
+		Radius(m3.ExtraSmall).Cursor(ui.CursorPointer).Label(name).Tooltip(name).
+		Justify(ui.Center).AlignItems(ui.Center)
+	if grow {
+		b.Grow(1)
+	}
+	b.Background(m3.StateFill(bg, fg, b.Hovered(), b.Pressed(), b.FocusVisible())).TextColor(fg)
+	b.Children(func() {
+		m3.LabelSmall.Style(ui.Text(c, label), true).Grow(1).TextAlign(ui.Center).
+			TextColor(fg).NoWrap().FontFeatures("tnum").LetterSpacing(0).FontSize(textSize)
+	})
+	if b.Clicked() {
+		a.setPitch(float64(semitones))
+	}
+}
+
+// rateSlider is one labeled slider of the playback panel. A change applies
+// as the knob moves, so the sound follows the pointer.
+func (a *app) rateSlider(c *ui.Context, title, label, key string, lo, hi, step float64, value float64, format func(float64) string, commit func(float64)) {
+	sc := m3.Of(c).Scheme
 	ui.Row(c).AlignItems(ui.Center).Children(func() {
 		m3.Text(c, m3.BodyMedium, title).TextColor(sc.OnSurface)
 		ui.Box(c).Grow(1)
 		m3.Text(c, m3.LabelMedium, format(value)).TextColor(sc.OnSurfaceVariant)
 	})
 	slider := m3.Slider(c, &value, lo, hi, m3.SliderSpec{Label: label, Key: key, Step: step})
-	switch {
-	case slider.Pressed():
-		*held = true
-		*draft = value
-	case *held || slider.Changed():
-		*held = false
+	if slider.Changed() {
 		commit(value)
-	}
-}
-
-// finishPlaybackDrag applies a speed or pitch the pointer was still holding
-// when the panel closed.
-func (a *app) finishPlaybackDrag() {
-	if a.nowPlaying.speedHeld {
-		a.nowPlaying.speedHeld = false
-		a.setSpeed(a.nowPlaying.speedDraft)
-	}
-	if a.nowPlaying.pitchHeld {
-		a.nowPlaying.pitchHeld = false
-		a.setPitch(a.nowPlaying.pitchDraft)
 	}
 }
 

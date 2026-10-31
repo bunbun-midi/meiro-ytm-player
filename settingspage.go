@@ -70,7 +70,7 @@ var settingsRows = []settingsRow{
 
 	{key: "h-data", heading: "Storage and privacy"},
 	{key: "cache", search: "storage cache playback downloads", card: (*app).playbackCacheCard},
-	{key: "history", search: "privacy history listening plays", card: (*app).historyCard},
+	{key: "history", search: "privacy history listening plays limit search date", card: (*app).historyCard},
 
 	{key: "h-about", heading: "About and support"},
 	{key: "updates", search: "about updates version", card: (*app).updatesCard},

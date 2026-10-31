@@ -114,3 +114,55 @@ func BenchmarkSummarize(b *testing.B) {
 		Summarize(h, now, 30)
 	}
 }
+
+func TestAppendNKeepsTheRequestedLimit(t *testing.T) {
+	var h []Entry
+	for _, id := range []string{"a", "b", "c", "d"} {
+		h = AppendN(h, 3, Entry{VideoID: id})
+	}
+	if len(h) != 3 || h[0].VideoID != "b" || h[2].VideoID != "d" {
+		t.Fatalf("history = %+v, want the newest 3", h)
+	}
+}
+
+func TestSearchPagesAndFiltersWithoutReturningEveryMatch(t *testing.T) {
+	start := time.Date(2026, 1, 1, 12, 0, 0, 0, time.Local)
+	entries := make([]Entry, 250)
+	for i := range entries {
+		entries[i] = Entry{
+			Title: fmt.Sprintf("Track %d", i), Artist: "Someone",
+			PlayedAt: start.AddDate(0, 0, i),
+		}
+	}
+	entries[0].Title = "Needle"
+	entries[0].Artist = "Hidden"
+	entries[10].Artist = "Special Guest"
+
+	page := Search(entries, Query{})
+	if page.Total != 250 || len(page.Entries) != PageSize || page.Pages != 3 || page.Entries[0].Title != "Track 249" {
+		t.Fatalf("first page = %+v, %d rows, first %q", page, len(page.Entries), page.Entries[0].Title)
+	}
+	if len(page.Entries) > PageSize {
+		t.Fatalf("returned %d rows, the cap is %d", len(page.Entries), PageSize)
+	}
+
+	found := Search(entries, Query{Text: "needle"})
+	if found.Total != 1 || len(found.Entries) != 1 || found.Entries[0].Artist != "Hidden" {
+		t.Fatalf("title search = %+v", found)
+	}
+	artist := Search(entries, Query{Text: "guest"})
+	if artist.Total != 1 || artist.Entries[0].Title != "Track 10" {
+		t.Fatalf("artist search = %+v", artist)
+	}
+
+	ranged := Search(entries, Query{
+		From:  time.Date(2026, 1, 10, 0, 0, 0, 0, time.Local),
+		Until: time.Date(2026, 1, 21, 0, 0, 0, 0, time.Local),
+	})
+	if ranged.Total != 11 || ranged.Pages != 1 || len(ranged.Entries) != 11 {
+		t.Fatalf("range = %+v, %d rows", ranged, len(ranged.Entries))
+	}
+	if ranged.Entries[0].PlayedAt.Day() != 20 || ranged.Entries[len(ranged.Entries)-1].PlayedAt.Day() != 10 {
+		t.Fatalf("range order = %v then %v", ranged.Entries[0].PlayedAt, ranged.Entries[len(ranged.Entries)-1].PlayedAt)
+	}
+}

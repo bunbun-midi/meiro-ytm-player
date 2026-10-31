@@ -173,8 +173,9 @@ func (a *app) syncPreload() {
 	if !ok || a.preload.busy() && a.preloadFor != next.VideoID {
 		a.preload.stop()
 	}
-	// A track that plays at another speed or pitch starts on its own: the
-	// player follows on at the pace of the track before.
+	// A track that plays at another speed or pitch starts on its own. The one
+	// waiting to follow takes the rate of the track playing, which a slider
+	// can still change.
 	if !ok || a.stream.busy() || a.preload.busy() || a.preloadFailed == next.VideoID || a.speedFor(next) != a.speedFor(a.current) || a.pitchFor(next) != a.pitchFor(a.current) ||
 		a.player.Preloaded() == next.VideoID || a.total <= 0 || !a.player.Playing() ||
 		a.total-a.player.Position() > preloadLead {

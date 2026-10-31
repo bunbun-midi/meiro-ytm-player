@@ -149,6 +149,32 @@ func TestSetSpeedGoesOnFromWhereTheStreamIs(t *testing.T) {
 	}
 }
 
+func TestChangingSpeedAndPitchWhilePlayingDoesNotRestart(t *testing.T) {
+	p, wav := newTestPlayerWithDuration(t, 10)
+	if err := p.Play(wav); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "playback to be underway", func() bool { return p.Position() > 500*time.Millisecond && p.Playing() })
+	start := time.Now()
+	for i := range 20 {
+		if err := p.SetSpeed(context.Background(), 0.8+float64(i%10)*0.1); err != nil {
+			t.Fatal(err)
+		}
+		if err := p.SetPitch(context.Background(), float64(i%5)-2); err != nil {
+			t.Fatal(err)
+		}
+		if !p.Playing() {
+			t.Fatal("changing the speed or pitch stopped playback")
+		}
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("changing the rate 40 times took %v, which is a restart of the decode", elapsed)
+	}
+	if p.Position() < 400*time.Millisecond {
+		t.Fatalf("position fell to %v while the rate changed", p.Position())
+	}
+}
+
 func TestSetPitchKeepsThePlaceAndThePace(t *testing.T) {
 	p, wav := newTestPlayerWithDuration(t, 10)
 	if err := p.Play(wav); err != nil {

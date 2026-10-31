@@ -66,8 +66,6 @@ type playback struct {
 	// seeking moves the player to seekTarget; it is busy while the decode is
 	// being restarted there.
 	seeking task
-	// speeding changes the player's speed to the current track's.
-	speeding task
 	// preload resolves the next track and has the player decode it ahead of
 	// the end of the current one; preloaded is what it left with the player,
 	// and preloadFailed the track it could not, which is not tried again
@@ -198,8 +196,6 @@ func (a *app) enterTrack(item youtube.MusicItem, automatic bool) (time.Duration,
 	// the decode the seek was moving is about to be replaced.
 	a.seeking.stop()
 	a.seekTarget = 0
-	// The track's audio starts at the track's own speed.
-	a.speeding.stop()
 	// What was being readied was for the track after the old one.
 	a.preload.stop()
 	a.preloaded, a.preloadFailed = preloadedAudio{}, ""
@@ -717,26 +713,20 @@ func (a *app) resetPlaybackRate() {
 		a.settings.MusicSpeed = 1
 		a.settings.MusicPitch = 0
 	}
-	a.nowPlaying.speedHeld = false
-	a.nowPlaying.pitchHeld = false
 	a.saveSettings()
 	a.applySpeed()
 }
 
-// applySpeed plays the current track at its speed and pitch, if it does not
-// already. Changing either restarts the decode, which is not for the main
-// thread to do. While the track's audio is on its way this is left to the
-// work that finds it, which applies them once it plays.
+// applySpeed plays the current track at its speed and pitch. The audio takes
+// the new rate as it plays, so this does not restart the decode or leave a
+// gap. While the track's audio is on its way this is left to the work that
+// finds it, which applies them once it plays.
 func (a *app) applySpeed() {
 	if a.stream.busy() {
 		return
 	}
 	speed, pitch := a.speedFor(a.current), a.pitchFor(a.current)
-	startTask(a, &a.speeding, noTimeout, func(ctx context.Context) (struct{}, error) {
-		return struct{}{}, a.player.SetPlayback(ctx, speed, pitch)
-	}, func(struct{}, error) {
-		a.syncSystemMedia()
-	})
+	_ = a.player.SetPlayback(context.Background(), speed, pitch)
 }
 
 // toggleMute silences the player, or brings back the last volume above 0. With

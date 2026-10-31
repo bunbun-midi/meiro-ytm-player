@@ -204,6 +204,7 @@ func (a *app) setup() {
 		a.account.signIn.err = err.Error()
 	}
 	a.cacheSongsText = strconv.Itoa(a.settings.CacheSongs)
+	a.historyLimitText = strconv.Itoa(settings.ClampHistoryLimit(a.settings.HistoryLimit))
 	a.volume = a.settings.Volume
 	a.player.SetVolume(playbackVolume(a.volume, 0, false, a.settings.LogVolume))
 	a.loadEQ()
