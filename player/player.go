@@ -74,9 +74,11 @@ type Player struct {
 	// eqBands holds one gain in dB per EQFrequencies entry, nil when the
 	// equaliser is off. Guarded by ctl while sessions publish updated targets.
 	eqBands []float64
-	// speed is how fast streams play, 1 for their own pace. Written under
-	// ctl and mu, so either guards a read.
+	// speed is how fast streams play, 1 for their own pace, and pitch is
+	// how far their key sits from the recording, in semitones. Written
+	// under ctl and mu, so either guards a read.
 	speed float64
+	pitch float64
 	// crossfade is how long the end of a track fades into the start of the
 	// next, zero for none. Written under ctl.
 	crossfade time.Duration
@@ -185,22 +187,22 @@ func (p *Player) PreloadContext(ctx context.Context, tag, url string) error {
 	// eqBands only changes under ctl, so snapshot it there; Preload itself
 	// decodes without the lock, like the rest of the app's calls.
 	p.ctl.Lock()
-	eq, speed := p.eqBands, p.speed
+	eq, speed, pitch := p.eqBands, p.speed, p.pitch
 	p.ctl.Unlock()
-	next, err := p.decode(ffmpeg, url, 0, eq, speed)
+	next, err := p.decode(ffmpeg, url, 0, eq, speed, pitch)
 	if err != nil {
 		return err
 	}
 	next.tag = tag
 	// A slider may have changed EQ while this stream was decoding. Publish it
 	// with the latest target while ctl prevents a newer change from racing the
-	// handoff into p.next. A stream decoded at a speed changed since is not
-	// one to follow with.
+	// handoff into p.next. A stream decoded at a speed or pitch changed
+	// since is not one to follow with.
 	p.ctl.Lock()
 	next.eq.Set(p.eqBands)
 	next.fade.setHold(p.crossfade)
 	p.mu.Lock()
-	if p.session == nil || p.speed != speed {
+	if p.session == nil || p.speed != speed || p.pitch != pitch {
 		p.mu.Unlock()
 		p.ctl.Unlock()
 		next.discard()
@@ -404,10 +406,14 @@ func equalGains(a, b []float64) bool {
 	return true
 }
 
-// MinSpeed and MaxSpeed bound the speeds SetSpeed takes.
+// MinSpeed and MaxSpeed bound the speeds SetSpeed takes. MaxPitch and
+// MinPitch bound SetPitch, in semitones. A speed slower than 0.5, the
+// slowest one atempo takes, is several of them.
 const (
-	MinSpeed = 0.5
-	MaxSpeed = 4.0
+	MinSpeed = 0.05
+	MaxSpeed = 1.8
+	MinPitch = -12.0
+	MaxPitch = 12.0
 )
 
 // SetSpeed sets how fast streams play, 1 for their own pace, keeping their
@@ -423,23 +429,53 @@ func (p *Player) SetSpeed(ctx context.Context, speed float64) error {
 	}
 	p.ctl.Lock()
 	defer p.ctl.Unlock()
+	return p.applyPlayback(ctx, speed, p.pitch)
+}
+
+// SetPitch sets how far streams sit from the key they were recorded in, in
+// semitones, 0 for that key, keeping their speed. A pitch outside MinPitch
+// and MaxPitch is ignored. The stream playing goes on from where it is, as
+// SetSpeed does.
+func (p *Player) SetPitch(ctx context.Context, semitones float64) error {
+	if math.IsNaN(semitones) || semitones < MinPitch || semitones > MaxPitch {
+		return nil
+	}
+	p.ctl.Lock()
+	defer p.ctl.Unlock()
+	return p.applyPlayback(ctx, p.speed, semitones)
+}
+
+// SetPlayback sets the speed and the pitch together, so changing both
+// restarts the decode once. A value outside its range ignores the call.
+func (p *Player) SetPlayback(ctx context.Context, speed, semitones float64) error {
+	if math.IsNaN(speed) || speed < MinSpeed || speed > MaxSpeed || math.IsNaN(semitones) || semitones < MinPitch || semitones > MaxPitch {
+		return nil
+	}
+	p.ctl.Lock()
+	defer p.ctl.Unlock()
+	return p.applyPlayback(ctx, speed, semitones)
+}
+
+// applyPlayback stores speed and pitch and restarts the stream playing at
+// them. The caller holds ctl.
+func (p *Player) applyPlayback(ctx context.Context, speed, semitones float64) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if p.speed == speed {
-		return nil
-	}
 	p.mu.Lock()
-	p.speed = speed
+	same := p.speed == speed && p.pitch == semitones
 	s := p.session
 	var url string
 	var at time.Duration
 	var paused, ended bool
+	if !same {
+		p.speed, p.pitch = speed, semitones
+	}
 	if s != nil {
 		url, at, paused, ended = s.url, s.played(), s.paused, p.endedLocked(s)
 	}
 	p.mu.Unlock()
-	if s == nil || ended {
+	if same || s == nil || ended {
 		return nil
 	}
 	return p.start(ctx, url, at, paused)
@@ -450,6 +486,13 @@ func (p *Player) Speed() float64 {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.speed
+}
+
+// Pitch returns how far streams sit from their recorded key, in semitones.
+func (p *Player) Pitch() float64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.pitch
 }
 
 // Volume returns the current gain, 1 by default.
@@ -619,7 +662,7 @@ func (p *Player) start(ctx context.Context, url string, at time.Duration, paused
 	}
 	p.stop()
 
-	s, err := p.decode(ffmpeg, url, at, p.eqBands, p.speed)
+	s, err := p.decode(ffmpeg, url, at, p.eqBands, p.speed, p.pitch)
 	if err != nil {
 		return err
 	}
@@ -640,8 +683,8 @@ func (p *Player) start(ctx context.Context, url string, at time.Duration, paused
 // that reaps it. The session's reader shapes the PCM as it reaches the output.
 // The session has no output yet: start gives it one, and a handoff takes over
 // the one before it.
-func (p *Player) decode(ffmpeg, url string, at time.Duration, eq []float64, speed float64) (*session, error) {
-	cmd := exec.Command(ffmpeg, streamArgs(url, at, p.rangedHTTP, speed)...) //nolint:noctx // the player ends ffmpeg itself when the stream is replaced or stopped
+func (p *Player) decode(ffmpeg, url string, at time.Duration, eq []float64, speed, pitch float64) (*session, error) {
+	cmd := exec.Command(ffmpeg, streamArgs(url, at, p.rangedHTTP, speed, pitch)...) //nolint:noctx // the player ends ffmpeg itself when the stream is replaced or stopped
 	hideWindow(cmd)
 	pipe, writer, err := os.Pipe()
 	if err != nil {
@@ -667,10 +710,10 @@ func (p *Player) decode(ffmpeg, url string, at time.Duration, eq []float64, spee
 }
 
 // streamArgs is the ffmpeg command line that decodes url from at into signed
-// 16-bit stereo PCM on stdout, played at speed. The equaliser runs as a live
-// layer after decode. ranged is whether ffmpeg can fetch a remote stream in
-// bounded ranges.
-func streamArgs(url string, at time.Duration, ranged bool, speed float64) []string {
+// 16-bit stereo PCM on stdout, played at speed and raised by pitch
+// semitones. The equaliser runs as a live layer after decode. ranged is
+// whether ffmpeg can fetch a remote stream in bounded ranges.
+func streamArgs(url string, at time.Duration, ranged bool, speed, pitch float64) []string {
 	args := []string{"-hide_banner", "-loglevel", "error", "-nostdin", "-xerror"}
 	if isHTTP(url) {
 		// A remote stream, or a manifest it names, cannot reach local files.
@@ -692,8 +735,8 @@ func streamArgs(url string, at time.Duration, ranged bool, speed float64) []stri
 		args = append(args, "-ss", strconv.FormatFloat(at.Seconds(), 'f', 3, 64))
 	}
 	args = append(args, "-i", url)
-	if speed != 1 {
-		args = append(args, "-af", tempoFilter(speed))
+	if filter := playbackFilter(speed, pitch); filter != "" {
+		args = append(args, "-af", filter)
 	}
 	args = append(args,
 		"-vn", "-f", "s16le", "-acodec", "pcm_s16le",
@@ -702,15 +745,64 @@ func streamArgs(url string, at time.Duration, ranged bool, speed float64) []stri
 	return append(args, "pipe:1")
 }
 
-// tempoFilter is the ffmpeg filter that plays audio at speed without changing
-// its pitch. ffmpeg before 4.3 takes atempo only up to 2, so a faster speed
-// is two of them.
-func tempoFilter(speed float64) string {
-	format := func(f float64) string { return "atempo=" + strconv.FormatFloat(f, 'f', -1, 64) }
-	if speed > 2 {
-		return format(2) + "," + format(speed/2)
+// playbackFilter is the ffmpeg filter that plays audio at speed, 1 for its
+// own pace, and pitch semitones sharp. An empty filter leaves both alone.
+// The source is resampled to the output rate first: asetrate is a ratio of
+// that rate, and a stream from YouTube is not always 48 kHz. Raising the
+// rate raises the pitch and shortens the audio, and atempo stretches it
+// back so only the pitch remains. ffmpeg takes each atempo from 0.5 to 2,
+// so a factor outside that is several of them.
+func playbackFilter(speed, semitones float64) string {
+	ratio := 1.0
+	if semitones != 0 {
+		ratio = math.Pow(2, semitones/12)
 	}
-	return format(speed)
+	var parts []string
+	if ratio != 1 {
+		rate := float64(sampleRate) * ratio
+		parts = append(parts,
+			"aresample="+strconv.Itoa(sampleRate),
+			"asetrate="+formatDecimal(rate),
+			"aresample="+strconv.Itoa(sampleRate),
+		)
+	}
+	if chain := atempoChain(speed / ratio); chain != "" {
+		parts = append(parts, chain)
+	}
+	return strings.Join(parts, ",")
+}
+
+// formatDecimal prints f with enough digits for a filter argument, and no
+// trailing zeros.
+func formatDecimal(f float64) string {
+	text := strconv.FormatFloat(f, 'f', 6, 64)
+	text = strings.TrimRight(strings.TrimRight(text, "0"), ".")
+	if text == "" || text == "-" {
+		return "0"
+	}
+	return text
+}
+
+// atempoChain is atempo filters whose product is tempo. Empty when tempo
+// is 1.
+func atempoChain(tempo float64) string {
+	if tempo <= 0 || math.Abs(tempo-1) < 1e-4 {
+		return ""
+	}
+	format := func(f float64) string { return "atempo=" + formatDecimal(f) }
+	var parts []string
+	for tempo > 2 {
+		parts = append(parts, format(2))
+		tempo /= 2
+	}
+	for tempo < 0.5 {
+		parts = append(parts, format(0.5))
+		tempo /= 0.5
+	}
+	if math.Abs(tempo-1) >= 1e-4 {
+		parts = append(parts, format(tempo))
+	}
+	return strings.Join(parts, ",")
 }
 
 // isHTTP reports whether rawURL is read over HTTP, the only protocol that

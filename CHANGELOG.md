@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Shift a song's pitch without changing its speed.** The playback control sets the pitch from −12 to +12 semitones, in steps of a tenth. The track continues from where it was. Songs and podcasts remember their own pitch.
+
+### Changed
+
+- **Playback speed is a slider.** It runs from 0.05× to 1.8× in steps of 0.01, in the player bar, the full player and the tray's mini player. The pitch stays put, and the track continues from where it was. A speed that was above 1.8× now plays at 1.8×. Songs and podcasts still remember their own speed.
+
 ## [0.5.1] - 2026-10-31
 
 ### Added

@@ -51,13 +51,13 @@ func (a *app) streamAudio(item youtube.MusicItem, startAt time.Duration, changed
 	loudnessClient := a.loudnessClient(item.VideoID)
 	known, knownOK := a.loudnessMap.Get(item.VideoID)
 	volume, normalize, logarithmic := a.volume, a.settings.NormalizeLoudness, a.settings.LogVolume
-	speed := a.speedFor(item)
+	speed, pitch := a.speedFor(item), a.pitchFor(item)
 	streams := a.streams
 	local := a.downloaded(item.VideoID)
 	log.Printf("playback: resolving video_id=%s", item.VideoID)
 	startTask(a, &a.stream, audio.ResolveTimeout, func(ctx context.Context) (resolvedAudio, error) {
 		a.player.Stop()
-		if err := a.player.SetSpeed(ctx, speed); err != nil {
+		if err := a.player.SetPlayback(ctx, speed, pitch); err != nil {
 			return resolvedAudio{}, err
 		}
 		// The gain is in place before the device starts, so a track that is
@@ -109,7 +109,7 @@ func (a *app) streamAudio(item youtube.MusicItem, startAt time.Duration, changed
 			return
 		}
 		log.Printf("playback: audio started video_id=%s from_cache=%t duration=%s", item.VideoID, found.fromCache, found.total)
-		a.applySpeed() // a speed chosen while the audio was on its way
+		a.applySpeed() // a speed or pitch chosen while the audio was on its way
 		a.audioStarted(item, found, a.player.Position(), changed, cache)
 		a.syncSystemMedia()
 	})
@@ -173,9 +173,9 @@ func (a *app) syncPreload() {
 	if !ok || a.preload.busy() && a.preloadFor != next.VideoID {
 		a.preload.stop()
 	}
-	// A track that plays at another speed starts on its own: the player
-	// follows on at the speed of the track before.
-	if !ok || a.stream.busy() || a.preload.busy() || a.preloadFailed == next.VideoID || a.speedFor(next) != a.speedFor(a.current) ||
+	// A track that plays at another speed or pitch starts on its own: the
+	// player follows on at the pace of the track before.
+	if !ok || a.stream.busy() || a.preload.busy() || a.preloadFailed == next.VideoID || a.speedFor(next) != a.speedFor(a.current) || a.pitchFor(next) != a.pitchFor(a.current) ||
 		a.player.Preloaded() == next.VideoID || a.total <= 0 || !a.player.Playing() ||
 		a.total-a.player.Position() > preloadLead {
 		return

@@ -221,7 +221,8 @@ func (a *app) applyReloadedSettings(previous settings.Settings) {
 	if s.Crossfade != previous.Crossfade || s.CrossfadeSeconds != previous.CrossfadeSeconds {
 		a.applyCrossfade()
 	}
-	if (s.PodcastSpeed != previous.PodcastSpeed || s.MusicSpeed != previous.MusicSpeed) && a.current.VideoID != "" {
+	if (s.PodcastSpeed != previous.PodcastSpeed || s.MusicSpeed != previous.MusicSpeed ||
+		s.PodcastPitch != previous.PodcastPitch || s.MusicPitch != previous.MusicPitch) && a.current.VideoID != "" {
 		a.applySpeed()
 	}
 	if !maps.Equal(s.Shortcuts, previous.Shortcuts) {

@@ -111,9 +111,13 @@ type Settings struct {
 	Crossfade        bool `json:"crossfade,omitempty"`
 	CrossfadeSeconds int  `json:"crossfadeSeconds,omitempty"`
 	// PodcastSpeed is how fast podcast episodes play, and MusicSpeed how fast
-	// everything else does, 1 or 0 for their own pace.
+	// everything else does, 1 or 0 for their own pace. PodcastPitch and
+	// MusicPitch are how many semitones sharp each plays, 0 for the key
+	// it was recorded in.
 	PodcastSpeed float64 `json:"podcastSpeed,omitempty"`
 	MusicSpeed   float64 `json:"musicSpeed,omitempty"`
+	PodcastPitch float64 `json:"podcastPitch,omitempty"`
+	MusicPitch   float64 `json:"musicPitch,omitempty"`
 }
 
 // TrayMark names one of the menu bar icon styles.

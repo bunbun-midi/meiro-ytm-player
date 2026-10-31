@@ -14,6 +14,10 @@ A user plays a track, controls the player bar, edits the queue, and finds the sa
 - `play-resume` restores the queue paused after a restart.
 - `play-volume` keeps the mute button visible in narrow windows and reveals
   the vertical volume slider on hover.
+- `play-speed` sets playback speed from 0.05× to 1.8× in steps of 0.01, and
+  pitch from −12 to +12 semitones in steps of 0.1. Songs and podcasts each
+  remember both. The track continues from where it was, and a pitch change
+  does not change its pace.
 - `play-mini` shows and controls the mini player.
 - `play-mini-navigation` opens an artist page from the mini player's track menu and returns to the main window.
 - `play-metadata-links` opens individually linked artists and albums from the main player bar and Now Playing. Hover underlines names; Tab/Enter activates them. Now Playing closes with its usual animation before navigating. Audio, queue and position continue unchanged. Unknown destinations remain plain text; the notch and tray mini player retain their existing metadata presentation.
@@ -23,6 +27,7 @@ A user plays a track, controls the player bar, edits the queue, and finds the sa
 
 - Click a track row. Click `Play` or `Shuffle` on an album, playlist or artist page.
 - Use the player bar buttons `Shuffle`, `Previous`, `Next`, `Repeat`, `Mute`, and the `Position` and `Volume` sliders.
+- Click the speed button (it reads `1×` until you change it) and drag `Playback speed` or `Pitch in semitones`. `Normal` puts both back. `End` and `Home` on a focused slider reach its ends. Music and podcasts keep separate values.
 - In a narrow window, hover `Mute` to reveal the vertical `Volume` slider;
   move onto the slider and drag it to adjust playback without losing the panel.
 - Click `Up next` in the player bar, or `Open the player`, to open the player panel with `Up next`, `Lyrics` and `Related`.

@@ -53,6 +53,10 @@ type SliderSpec struct {
 	Vertical bool
 	// Disabled greys the slider out.
 	Disabled bool
+	// Step is the distance between values, measured from the low end. Zero
+	// leaves the drag continuous and moves the arrow keys by a hundredth of
+	// the range.
+	Step float64
 }
 
 // Slider builds an Expressive slider: the active track and the inactive one
@@ -79,6 +83,9 @@ func Slider(c *ui.Context, value *float64, lo, hi float64, spec SliderSpec) ui.E
 	}
 	if spec.Label != "" {
 		s.Label(spec.Label)
+	}
+	if spec.Step > 0 {
+		s.Step(spec.Step)
 	}
 	if spec.Vertical {
 		s.Vertical().Padding(pad)

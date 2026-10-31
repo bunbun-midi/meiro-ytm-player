@@ -1045,44 +1045,62 @@ func TestEpisodesAndMusicPlayAtTheirOwnChosenSpeeds(t *testing.T) {
 	if err := tt.Click("1×"); err != nil {
 		t.Fatalf("no speed button for an episode: %v in %q", err, tt.Texts())
 	}
-	tt.Frame()
-	if err := tt.Click("2×"); err != nil {
-		t.Fatalf("no 2× in the speed menu: %v in %q", err, tt.Texts())
-	}
-	waitFor(t, func() bool { a.poll(); return a.player.Speed() == 2 && a.player.Playing() })
+	chooseRate(t, tt, "Playback speed", ui.KeyEnd)
+	waitFor(t, func() bool { a.poll(); return a.player.Speed() == 1.8 && a.player.Playing() })
 	if a.current.VideoID != "ep-1" || a.player.Position() < 70*time.Second {
 		t.Errorf("after the change %s plays at %v, want ep-1 from 70s or past it", a.current.VideoID, a.player.Position())
 	}
 	tt.Frame()
-	if !tt.HasText("2×") || a.settings.PodcastSpeed != 2 {
-		t.Errorf("the button reads %q and the setting is %v, want 2×", tt.Texts(), a.settings.PodcastSpeed)
+	if !tt.HasText("1.8×") || a.settings.PodcastSpeed != 1.8 {
+		t.Errorf("the button reads %q and the setting is %v, want 1.8×", tt.Texts(), a.settings.PodcastSpeed)
 	}
+	tt.Key(0, ui.KeyEscape)
 
 	a.play(tracks("song")[0], nil)
 	waitFor(t, playing("song"))
 	if got := a.player.Speed(); got != 1 {
 		t.Errorf("a song plays at %v×, want its own pace until music has a speed", got)
 	}
+	if got := a.player.Pitch(); got != 0 {
+		t.Errorf("a song plays %v semitones sharp, want its own key", got)
+	}
 	tt.Frame()
 	if err := tt.Click("1×"); err != nil {
 		t.Fatalf("no speed button for a song: %v in %q", err, tt.Texts())
 	}
-	tt.Frame()
-	if err := tt.Click("1.5×"); err != nil {
-		t.Fatalf("no 1.5× in the speed menu: %v in %q", err, tt.Texts())
+	chooseRate(t, tt, "Playback speed", ui.KeyHome)
+	waitFor(t, func() bool { a.poll(); return a.player.Speed() == 0.05 && a.player.Playing() })
+	chooseRate(t, tt, "Pitch in semitones", ui.KeyEnd)
+	waitFor(t, func() bool { a.poll(); return a.player.Pitch() == 12 && a.player.Playing() })
+	if a.settings.MusicSpeed != 0.05 || a.settings.MusicPitch != 12 || a.settings.PodcastSpeed != 1.8 || a.settings.PodcastPitch != 0 {
+		t.Errorf("music %v× %+v st, podcasts %v× %+v st, want 0.05× +12 and the episode's 1.8×",
+			a.settings.MusicSpeed, a.settings.MusicPitch, a.settings.PodcastSpeed, a.settings.PodcastPitch)
 	}
-	waitFor(t, func() bool { a.poll(); return a.player.Speed() == 1.5 && a.player.Playing() })
-	if a.settings.MusicSpeed != 1.5 || a.settings.PodcastSpeed != 2 {
-		t.Errorf("music speed %v and podcast speed %v, want 1.5 and the 2 kept", a.settings.MusicSpeed, a.settings.PodcastSpeed)
-	}
+	tt.Key(0, ui.KeyEscape)
 
 	if err := tt.Click("Episode Two"); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, playing("ep-2"))
-	if got := a.player.Speed(); got != 2 {
-		t.Errorf("the next episode plays at %v×, want the 2× chosen", got)
+	if got := a.player.Speed(); got != 1.8 {
+		t.Errorf("the next episode plays at %v×, want the 1.8× chosen", got)
 	}
+	if got := a.player.Pitch(); got != 0 {
+		t.Errorf("the next episode plays %v semitones sharp, want the key left for podcasts", got)
+	}
+}
+
+// chooseRate moves an open playback slider to an end of its range. The panel
+// is already open. Home and End land on the ends however the drag began.
+func chooseRate(t *testing.T, tt *ui.Tester, label string, key ui.Key) {
+	t.Helper()
+	tt.Frame()
+	slider, ok := tt.Find(label)
+	if !ok {
+		t.Fatalf("no %s slider in %q", label, tt.Texts())
+	}
+	tt.ClickAt(slider.X+slider.W/2, slider.Y+slider.H/2)
+	tt.Key(0, key)
 }
 
 // A signed-in episode can resume from YouTube's account progress when there

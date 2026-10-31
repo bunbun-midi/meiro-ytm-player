@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"runtime"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +14,7 @@ import (
 	"github.com/elianiva/meiro/internal/lru"
 	"github.com/elianiva/meiro/internal/playstate"
 	"github.com/elianiva/meiro/internal/settings"
+	"github.com/elianiva/meiro/player"
 	"github.com/elianiva/meiro/youtube"
 )
 
@@ -629,20 +630,45 @@ func (a *app) setVolume(v float64) {
 	a.syncSystemMedia()
 }
 
-// playbackSpeeds are the speeds a track can play at.
-var playbackSpeeds = []float64{0.5, 0.8, 1, 1.2, 1.5, 1.8, 2, 2.5, 3}
-
 // speedFor is how fast item plays: an episode at the speed chosen for
-// podcasts, anything else at the one chosen for music.
+// podcasts, anything else at the one chosen for music. Zero, the value a
+// settings file has before a speed is chosen, is the track's own pace.
 func (a *app) speedFor(item youtube.MusicItem) float64 {
 	speed := a.settings.MusicSpeed
 	if item.IsEpisode() {
 		speed = a.settings.PodcastSpeed
 	}
-	if slices.Contains(playbackSpeeds, speed) {
-		return speed
+	if speed == 0 || math.IsNaN(speed) {
+		return 1
 	}
-	return 1
+	return snapSpeed(speed)
+}
+
+// pitchFor is how many semitones sharp item plays, the same split as
+// speedFor.
+func (a *app) pitchFor(item youtube.MusicItem) float64 {
+	pitch := a.settings.MusicPitch
+	if item.IsEpisode() {
+		pitch = a.settings.PodcastPitch
+	}
+	if math.IsNaN(pitch) {
+		return 0
+	}
+	return snapPitch(pitch)
+}
+
+// snapSpeed rounds speed to the nearest hundredth and keeps it inside the
+// speeds the player accepts.
+func snapSpeed(speed float64) float64 {
+	speed = math.Round(speed*100) / 100
+	return min(max(speed, player.MinSpeed), player.MaxSpeed)
+}
+
+// snapPitch rounds semitones to the nearest tenth and keeps them inside an
+// octave either way.
+func snapPitch(semitones float64) float64 {
+	semitones = math.Round(semitones*10) / 10
+	return min(max(semitones, player.MinPitch), player.MaxPitch)
 }
 
 // applyCrossfade sends the crossfade length to the player, zero when it is off.
@@ -657,26 +683,57 @@ func (a *app) applyCrossfade() {
 // setSpeed chooses how fast tracks like the current one play, podcast
 // episodes or music, keeps the choice, and plays the current track at it.
 func (a *app) setSpeed(speed float64) {
+	a.setRate(&a.settings.MusicSpeed, &a.settings.PodcastSpeed, snapSpeed(speed))
+}
+
+// setPitch chooses how many semitones sharp tracks like the current one
+// play, and plays the current track there.
+func (a *app) setPitch(semitones float64) {
+	a.setRate(&a.settings.MusicPitch, &a.settings.PodcastPitch, snapPitch(semitones))
+}
+
+// setRate stores value on the music or podcast setting for the track
+// playing, and plays it at the rates now chosen.
+func (a *app) setRate(music, podcast *float64, value float64) {
+	chosen := music
 	if a.current.IsEpisode() {
-		a.settings.PodcastSpeed = speed
-	} else {
-		a.settings.MusicSpeed = speed
+		chosen = podcast
 	}
+	if *chosen == value {
+		return
+	}
+	*chosen = value
 	a.saveSettings()
 	a.applySpeed()
 }
 
-// applySpeed plays the current track at its speed, if it does not already.
-// Changing the speed restarts the decode, which is not for the main thread to
-// do. While the track's audio is on its way this is left to the work that
-// finds it, which applies the speed once it plays.
+// resetPlaybackRate puts tracks like the current one back at their own
+// pace and key.
+func (a *app) resetPlaybackRate() {
+	if a.current.IsEpisode() {
+		a.settings.PodcastSpeed = 1
+		a.settings.PodcastPitch = 0
+	} else {
+		a.settings.MusicSpeed = 1
+		a.settings.MusicPitch = 0
+	}
+	a.nowPlaying.speedHeld = false
+	a.nowPlaying.pitchHeld = false
+	a.saveSettings()
+	a.applySpeed()
+}
+
+// applySpeed plays the current track at its speed and pitch, if it does not
+// already. Changing either restarts the decode, which is not for the main
+// thread to do. While the track's audio is on its way this is left to the
+// work that finds it, which applies them once it plays.
 func (a *app) applySpeed() {
 	if a.stream.busy() {
 		return
 	}
-	speed := a.speedFor(a.current)
+	speed, pitch := a.speedFor(a.current), a.pitchFor(a.current)
 	startTask(a, &a.speeding, noTimeout, func(ctx context.Context) (struct{}, error) {
-		return struct{}{}, a.player.SetSpeed(ctx, speed)
+		return struct{}{}, a.player.SetPlayback(ctx, speed, pitch)
 	}, func(struct{}, error) {
 		a.syncSystemMedia()
 	})

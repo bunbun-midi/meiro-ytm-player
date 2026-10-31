@@ -7,6 +7,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/elianiva/meiro/internal/keymap"
 	"github.com/elianiva/meiro/m3"
+	"github.com/elianiva/meiro/player"
 	"github.com/elianiva/meiro/youtube"
 )
 
@@ -191,52 +192,98 @@ func speedLabel(speed float64) string {
 	return strconv.FormatFloat(speed, 'f', -1, 64) + "×"
 }
 
+// pitchLabel names a pitch shift as "+1.5 st".
+func pitchLabel(semitones float64) string {
+	text := strconv.FormatFloat(semitones, 'f', -1, 64)
+	if semitones > 0 {
+		text = "+" + text
+	}
+	return text + " st"
+}
+
 // speedControl is the button that shows how fast the current track plays and
-// opens the menu that chooses it; key tells the player's buttons apart.
+// opens the sliders for its speed and pitch; key tells the player's buttons
+// apart.
 func (a *app) speedControl(c *ui.Context, key string) {
 	sc := m3.Of(c).Scheme
 	speed := a.speedFor(a.current)
+	pitch := a.pitchFor(a.current)
 	anchor := m3.Button(c, m3.ButtonSpec{Label: speedLabel(speed), Kind: m3.TextOnly, Size: m3.Small40, Key: key})
-	// A menu ignores the press that lands on the button that opened it, so
-	// the button closes it, as the account menu's button does.
+	if pitch != 0 {
+		anchor.Tooltip("Pitch " + pitchLabel(pitch))
+	}
+	// A panel ignores the press that lands on the button that opened it, so
+	// the button closes it, as the account menu's button does. Another
+	// speed button, on the full player or the mini player, leaves a drag
+	// on this one alone.
+	wasOpen := a.nowPlaying.speedMenu == key
 	if anchor.Clicked() {
-		if a.nowPlaying.speedMenu == key {
+		if wasOpen {
 			a.nowPlaying.speedMenu = ""
 		} else {
 			a.nowPlaying.speedMenu = key
 		}
 	}
-	open := a.nowPlaying.speedMenu == key
-	if !open {
+	if a.nowPlaying.speedMenu != key {
+		if wasOpen {
+			a.finishPlaybackDrag()
+		}
 		return
 	}
-	m3.Menu(c, anchor, &open, 200, func() {
-		m3.Text(c, m3.LabelMedium, "Playback speed").Padding(12, 12, 4).TextColor(sc.OnSurfaceVariant)
-		for _, choice := range playbackSpeeds {
-			label := speedLabel(choice)
-			if choice == 1 {
-				label = "Normal"
+	open := true
+	ui.PopoverBase(c, anchor, &open, func(panel ui.Element) {
+		panel.Key("playback-"+key).Width(280).Padding(12, 16).Radius(m3.Large).Margin(8, 0, 0, 0).
+			Background(sc.SurfaceContainerHigh)
+		m3.Elevation(c, panel, 3)
+		ui.Column(c).Gap(12).Children(func() {
+			m3.Text(c, m3.LabelMedium, "Playback").TextColor(sc.OnSurfaceVariant)
+			a.rateSlider(c, "Speed", "Playback speed", key+"-speed", player.MinSpeed, player.MaxSpeed, 0.01, &a.nowPlaying.speedHeld, &a.nowPlaying.speedDraft, speed, speedLabel, a.setSpeed)
+			a.rateSlider(c, "Pitch", "Pitch in semitones", key+"-pitch", player.MinPitch, player.MaxPitch, 0.1, &a.nowPlaying.pitchHeld, &a.nowPlaying.pitchDraft, pitch, pitchLabel, a.setPitch)
+			if m3.Button(c, m3.ButtonSpec{Label: "Normal", Kind: m3.TextOnly, Size: m3.Small40, Key: key + "-reset"}).Clicked() {
+				a.resetPlaybackRate()
 			}
-			row := ui.ButtonBase(c.Key("speed-" + label))
-			row.Height(36).PaddingX(12).Gap(12).AlignItems(ui.Center).Radius(m3.Medium).Cursor(ui.CursorPointer).Label(label).
-				Role(ui.RoleMenuItemRadio).Checked(choice == speed).
-				Background(m3.StateFill(ui.Transparent, sc.OnSurface, row.Hovered(), row.Pressed(), row.FocusVisible()))
-			row.Children(func() {
-				if choice == speed {
-					ui.Icon(c, m3.IconCheck).FontSize(22).TextColor(sc.Primary)
-				} else {
-					ui.Box(c).Size(22, 22)
-				}
-				m3.Text(c, m3.BodyLarge, label).Grow(1).SingleLine().TextColor(sc.OnSurface)
-			})
-			if row.Clicked() {
-				open = false
-				a.setSpeed(choice)
-			}
-		}
+		})
 	})
 	if !open {
 		a.nowPlaying.speedMenu = ""
+		a.finishPlaybackDrag()
+	}
+}
+
+// rateSlider is one labeled slider of the playback panel. held and draft
+// keep the value under the pointer until it is released; commit runs then,
+// and when a key changes it.
+func (a *app) rateSlider(c *ui.Context, title, label, key string, lo, hi, step float64, held *bool, draft *float64, value float64, format func(float64) string, commit func(float64)) {
+	sc := m3.Of(c).Scheme
+	if *held {
+		value = *draft
+	}
+	ui.Row(c).AlignItems(ui.Center).Children(func() {
+		m3.Text(c, m3.BodyMedium, title).TextColor(sc.OnSurface)
+		ui.Box(c).Grow(1)
+		m3.Text(c, m3.LabelMedium, format(value)).TextColor(sc.OnSurfaceVariant)
+	})
+	slider := m3.Slider(c, &value, lo, hi, m3.SliderSpec{Label: label, Key: key, Step: step})
+	switch {
+	case slider.Pressed():
+		*held = true
+		*draft = value
+	case *held || slider.Changed():
+		*held = false
+		commit(value)
+	}
+}
+
+// finishPlaybackDrag applies a speed or pitch the pointer was still holding
+// when the panel closed.
+func (a *app) finishPlaybackDrag() {
+	if a.nowPlaying.speedHeld {
+		a.nowPlaying.speedHeld = false
+		a.setSpeed(a.nowPlaying.speedDraft)
+	}
+	if a.nowPlaying.pitchHeld {
+		a.nowPlaying.pitchHeld = false
+		a.setPitch(a.nowPlaying.pitchDraft)
 	}
 }
 

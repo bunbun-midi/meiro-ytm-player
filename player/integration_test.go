@@ -130,7 +130,7 @@ func TestSetSpeedGoesOnFromWhereTheStreamIs(t *testing.T) {
 	}
 	p.Pause()
 	p.Seek(4 * time.Second)
-	if err := p.SetSpeed(context.Background(), 2); err != nil {
+	if err := p.SetSpeed(context.Background(), 1.8); err != nil {
 		t.Fatal(err)
 	}
 	if !p.Paused() {
@@ -141,10 +141,41 @@ func TestSetSpeedGoesOnFromWhereTheStreamIs(t *testing.T) {
 	}
 	p.Resume()
 	waitFor(t, "the track to end", p.Ended)
-	// The six seconds left play in three seconds of sound: a position that
-	// ignored the speed would stop near 7s, and sound not sped up near 16s.
+	// The six seconds left play in about three of sound. A position that
+	// ignored the speed would stop near 7s, and sound left at its own pace
+	// near 15s.
 	if !near(p.Position(), 10*time.Second) {
 		t.Errorf("position at the end = %v, want about 10s", p.Position())
+	}
+}
+
+func TestSetPitchKeepsThePlaceAndThePace(t *testing.T) {
+	p, wav := newTestPlayerWithDuration(t, 10)
+	if err := p.Play(wav); err != nil {
+		t.Fatal(err)
+	}
+	p.Pause()
+	p.Seek(4 * time.Second)
+	if err := p.SetPitch(context.Background(), 12); err != nil {
+		t.Fatal(err)
+	}
+	if !p.Paused() {
+		t.Error("changing the pitch of a paused stream resumed it")
+	}
+	if p.Pitch() != 12 {
+		t.Errorf("pitch = %v, want 12 semitones", p.Pitch())
+	}
+	if !near(p.Position(), 4*time.Second) {
+		t.Errorf("position after changing the pitch = %v, want about 4s", p.Position())
+	}
+	p.Resume()
+	waitFor(t, "the track to end", p.Ended)
+	// An octave up that also sped the track up would finish near 7s.
+	if !near(p.Position(), 10*time.Second) {
+		t.Errorf("position at the end = %v, want about 10s", p.Position())
+	}
+	if p.Failure() != "" {
+		t.Errorf("pitch shift failed: %s", p.Failure())
 	}
 }
 
