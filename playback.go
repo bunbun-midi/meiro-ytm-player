@@ -657,7 +657,7 @@ func (a *app) pitchFor(item youtube.MusicItem) float64 {
 // speeds the player accepts.
 func snapSpeed(speed float64) float64 {
 	speed = math.Round(speed*100) / 100
-	return min(max(speed, player.MinSpeed), player.MaxSpeed)
+	return min(max(speed, player.MinDragSpeed), player.MaxDragSpeed)
 }
 
 // snapPitch rounds semitones to the nearest tenth and keeps them inside an
@@ -684,8 +684,9 @@ type speedFineDrag struct {
 }
 
 // scaleSpeedDrag moves a Ctrl-drag of the speed slider by the factor in
-// settings, from the speed where the drag began. A drag without Ctrl follows
-// the pointer, which is what absolute already is.
+// settings, from the speed where the drag began. absolute follows the
+// pointer past either end of the track. A drag without Ctrl follows the
+// pointer at the track's rate.
 func (a *app) scaleSpeedDrag(key string, before, absolute float64, pressed, ctrl bool) float64 {
 	if !pressed {
 		if a.speedFine.key == key {
@@ -695,7 +696,7 @@ func (a *app) scaleSpeedDrag(key string, before, absolute float64, pressed, ctrl
 	}
 	if a.speedFine.key != key {
 		if !ctrl {
-			return absolute
+			return snapSpeed(absolute)
 		}
 		a.speedFine = speedFineDrag{key: key, origin: before, anchor: absolute}
 	}

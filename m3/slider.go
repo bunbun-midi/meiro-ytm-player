@@ -58,8 +58,23 @@ type SliderSpec struct {
 	// the range.
 	Step float64
 	// Adjust replaces the value a drag or a key just wrote, before the
-	// track is drawn. pressed reports whether the pointer is held.
+	// track is drawn. While the pointer is held, value follows it past
+	// either end of the track at the track's rate. pressed reports
+	// whether the pointer is held.
 	Adjust func(value float64, pressed bool) float64
+}
+
+// valueAlongTrack is the range value under the pointer, using the track's
+// rate even past either end. ok is false before the slider has been laid out.
+func valueAlongTrack(s ui.Element, lo, hi float64) (float64, bool) {
+	const pad float32 = 10
+	b := s.LayoutBounds()
+	span := b.W - pad*2
+	if span <= 0 || hi <= lo {
+		return 0, false
+	}
+	x, _, _ := s.PointerPosition()
+	return lo + float64((x-pad)/span)*(hi-lo), true
 }
 
 // Slider builds an Expressive slider: the active track and the inactive one
@@ -97,7 +112,17 @@ func Slider(c *ui.Context, value *float64, lo, hi float64, spec SliderSpec) ui.E
 		s.Disabled(true)
 	}
 	if spec.Adjust != nil {
-		*value = spec.Adjust(*value, s.Pressed())
+		reported := *value
+		// Pressed is false once the pointer leaves the slider, while the
+		// drag is still held. Past either end the pointer keeps the
+		// track's rate, instead of the value sticking at the end.
+		_, _, held := s.Dragged()
+		if held && !spec.Vertical {
+			if along, ok := valueAlongTrack(s, lo, hi); ok {
+				reported = along
+			}
+		}
+		*value = spec.Adjust(reported, held)
 	}
 
 	frac := float32(0)

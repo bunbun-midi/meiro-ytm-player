@@ -612,11 +612,11 @@ func (r *rateReader) olaAt(pos float64) (float64, float64) {
 }
 
 func clampSpeed(speed float64) float64 {
-	if speed < MinSpeed {
-		return MinSpeed
+	if speed < MinDragSpeed {
+		return MinDragSpeed
 	}
-	if speed > MaxSpeed {
-		return MaxSpeed
+	if speed > MaxDragSpeed {
+		return MaxDragSpeed
 	}
 	return speed
 }

@@ -368,7 +368,9 @@ func (a *app) rateSlider(c *ui.Context, title, label, key string, lo, hi, step f
 	if fine {
 		slider.Tooltip("Hold Ctrl and drag to move more slowly")
 	}
-	if slider.Changed() {
+	// Past the ends the track's own value stays put, so a drag there still
+	// has to be stored when Adjust moved it.
+	if value != before || slider.Changed() {
 		commit(value)
 	}
 }

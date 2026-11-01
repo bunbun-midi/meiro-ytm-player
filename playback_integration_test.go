@@ -23,6 +23,7 @@ import (
 	"github.com/elianiva/meiro/internal/audio"
 	"github.com/elianiva/meiro/internal/playstate"
 	"github.com/elianiva/meiro/m3"
+	"github.com/elianiva/meiro/player"
 	"github.com/elianiva/meiro/youtube"
 )
 
@@ -1171,6 +1172,89 @@ func TestScaleSpeedDragFollowsTheFactor(t *testing.T) {
 	a.scaleSpeedDrag("speed", 1, 1.2, true, true)
 	if got := a.scaleSpeedDrag("speed", 1, 1.6, true, true); math.Abs(got-1.2) > 0.001 {
 		t.Fatalf("at half speed the drag returned %v, want 1.2", got)
+	}
+	a.speedFine.key = ""
+	a.settings.SpeedFine = 0.25
+	a.scaleSpeedDrag("speed", 1, 1, true, true)
+	if got := a.scaleSpeedDrag("speed", 1, 3, true, true); math.Abs(got-1.5) > 0.001 {
+		t.Fatalf("past the end of the track the drag returned %v, want 1.5", got)
+	}
+}
+
+// Dragging the speed slider past either end keeps the track's rate. The
+// pitch slider still stops at its ends.
+func TestDraggingPastTheSpeedSliderKeepsItsRate(t *testing.T) {
+	a := newTestApp(t)
+	a.current = tracks("song")[0]
+	tt := ui.NewTester(a.view, 1180, 850)
+	tt.Frame()
+	tt.Advance(400 * time.Millisecond)
+	if err := tt.Click("1×"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+
+	speed := ttMustFind(t, tt, "Playback speed")
+	y := speed.Y + speed.H/2
+	x0, x1 := speed.X+48, speed.X+speed.W-48
+	tt.ClickAt(x0, y)
+	v0 := a.settings.MusicSpeed
+	speed = ttMustFind(t, tt, "Playback speed")
+	y = speed.Y + speed.H/2
+	x0, x1 = speed.X+48, speed.X+speed.W-48
+	tt.ClickAt(x1, y)
+	v1 := a.settings.MusicSpeed
+	if v1-v0 < 0.4 {
+		t.Fatalf("two points on the speed slider moved it from %v to %v", v0, v1)
+	}
+	perPx := (v1 - v0) / float64(x1-x0)
+
+	speed = ttMustFind(t, tt, "Playback speed")
+	y = speed.Y + speed.H/2
+	x1 = speed.X + speed.W - 48
+	tt.Press(x1, y)
+	base := a.settings.MusicSpeed
+	const past float32 = 70
+	tt.Move(x1+past, y)
+	tt.Release(x1+past, y)
+	tt.Frame()
+	got := a.settings.MusicSpeed
+	want := snapSpeed(base + perPx*float64(past))
+	if math.Abs(got-want) > 0.03 || got <= player.MaxSpeed {
+		t.Fatalf("dragging past the right end set %v, want about %v and above %v", got, want, player.MaxSpeed)
+	}
+	if a.player.Speed() != got {
+		t.Fatalf("playback speed is %v, want the slider's %v", a.player.Speed(), got)
+	}
+
+	if err := tt.Click("Normal"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	speed = ttMustFind(t, tt, "Playback speed")
+	y = speed.Y + speed.H/2
+	x0 = speed.X + 48
+	tt.Press(x0, y)
+	base = a.settings.MusicSpeed
+	dist := float32((base-player.MinSpeed)/perPx) + 4
+	tt.Move(x0-dist, y)
+	tt.Release(x0-dist, y)
+	tt.Frame()
+	got = a.settings.MusicSpeed
+	want = snapSpeed(base - perPx*float64(dist))
+	if math.Abs(got-want) > 0.03 || got >= player.MinSpeed {
+		t.Fatalf("dragging past the left end set %v, want about %v and below %v", got, want, player.MinSpeed)
+	}
+
+	pitch := ttMustFind(t, tt, "Pitch in semitones")
+	py := pitch.Y + pitch.H/2
+	px := pitch.X + pitch.W - 20
+	tt.Press(px, py)
+	tt.Move(px+80, py)
+	tt.Release(px+80, py)
+	tt.Frame()
+	if a.settings.MusicPitch > player.MaxPitch || a.settings.MusicPitch < player.MaxPitch-1 {
+		t.Fatalf("dragging past the pitch slider set %v, want the top of its range", a.settings.MusicPitch)
 	}
 }
 

@@ -414,23 +414,26 @@ func equalGains(a, b []float64) bool {
 	return true
 }
 
-// MinSpeed and MaxSpeed bound the speeds SetSpeed takes. MaxPitch and
-// MinPitch bound SetPitch, in semitones.
+// MinSpeed and MaxSpeed are the ends of the speed slider's track. A drag
+// past either end keeps that track's rate until MinDragSpeed or
+// MaxDragSpeed. MaxPitch and MinPitch bound SetPitch, in semitones.
 const (
-	MinSpeed = 0.05
-	MaxSpeed = 1.8
-	MinPitch = -12.0
-	MaxPitch = 12.0
+	MinSpeed     = 0.05
+	MaxSpeed     = 1.8
+	MinDragSpeed = 0.01
+	MaxDragSpeed = 4
+	MinPitch     = -12.0
+	MaxPitch     = 12.0
 )
 
 // SetSpeed sets how fast streams play, 1 for their own pace, keeping their
-// pitch. A speed outside MinSpeed and MaxSpeed is ignored. The stream
+// pitch. A speed outside MinDragSpeed and MaxDragSpeed is ignored. The stream
 // playing goes on from where it is, without a gap, and stays paused when it
 // was paused. Positions stay in the stream's own time. Once ctx is done it
 // does nothing and returns ctx's error, so a request that was superseded
 // cannot undo the one that superseded it.
 func (p *Player) SetSpeed(ctx context.Context, speed float64) error {
-	if math.IsNaN(speed) || speed < MinSpeed || speed > MaxSpeed {
+	if math.IsNaN(speed) || speed < MinDragSpeed || speed > MaxDragSpeed {
 		return nil
 	}
 	if err := ctx.Err(); err != nil {
@@ -463,7 +466,7 @@ func (p *Player) SetPitch(ctx context.Context, semitones float64) error {
 // range ignores the call. The stream playing takes both as it plays, without
 // restarting.
 func (p *Player) SetPlayback(ctx context.Context, speed, semitones float64) error {
-	if math.IsNaN(speed) || speed < MinSpeed || speed > MaxSpeed || math.IsNaN(semitones) || semitones < MinPitch || semitones > MaxPitch {
+	if math.IsNaN(speed) || speed < MinDragSpeed || speed > MaxDragSpeed || math.IsNaN(semitones) || semitones < MinPitch || semitones > MaxPitch {
 		return nil
 	}
 	if err := ctx.Err(); err != nil {
