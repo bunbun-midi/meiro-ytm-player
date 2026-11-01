@@ -58,7 +58,7 @@ var settingsRows = []settingsRow{
 
 	{key: "h-look", heading: "Appearance and sound"},
 	{key: "appearance", search: "theme appearance system light dark colour color colours colors violet indigo blue sky teal green lime amber orange red rose orchid hue palette tonal spot vibrant expressive neutral monochrome artwork dynamic matugen source", card: (*app).appearanceCard},
-	{key: "sound", search: "sound audio normalize loudness logarithmic equaliser volume bungee phase vocoder overlap-add time stretch speed", card: (*app).soundCard},
+	{key: "sound", search: "sound audio normalize loudness logarithmic equaliser volume bungee phase vocoder overlap-add time stretch speed ctrl drag fine", card: (*app).soundCard},
 
 	{key: "h-playback", heading: "Playback"},
 	{key: "playback", search: "auto skip disliked songs thumbs down", card: (*app).playbackCard},
@@ -390,6 +390,21 @@ func (a *app) soundCard(c *ui.Context) {
 			if m3.ButtonGroup(c, "time-stretch", &picked, labels, nil) {
 				a.setTimeStretch(labels[picked])
 			}
+		})
+		ui.Column(c).Gap(8).Children(func() {
+			settingLabel(c, "Ctrl-drag", "How far the speed slider moves while Ctrl is held, compared with a normal drag.")
+			ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
+				value := settings.ClampSpeedFine(a.settings.SpeedFine)
+				slider := m3.Slider(c, &value, settings.MinSpeedFine, settings.MaxSpeedFine, m3.SliderSpec{
+					Label: "Ctrl-drag speed", Thickness: 16, Step: 0.05, Key: "speed-fine",
+				}).Grow(1)
+				if slider.Changed() {
+					a.settings.SpeedFine = settings.ClampSpeedFine(math.Round(value*20) / 20)
+					a.saveSettings()
+				}
+				m3.EmphasizedText(c, m3.TitleMedium, strconv.FormatFloat(settings.ClampSpeedFine(a.settings.SpeedFine), 'f', 2, 64)+"×").
+					Width(56).Shrink(0).TextAlign(ui.End).TextColor(sc.OnSurface)
+			})
 		})
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
 			settingLabel(c, "Equaliser", "Shape ten bands of the sound as you adjust them, without restarting the stream.").Grow(1)

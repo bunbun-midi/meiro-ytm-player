@@ -59,6 +59,8 @@ type app struct {
 	// What the user chose, and the writer that keeps it.
 	settings settings.Settings
 	saver    settings.Writer
+	// speedFine is the Ctrl-drag of the speed slider still held.
+	speedFine speedFineDrag
 	// settingsSeen is the last settings.json content the watcher read, so it
 	// notices only a change it has not handled. watchSettings starts it, and
 	// then only the watcher's goroutine touches it.

@@ -676,6 +676,33 @@ func (a *app) applyCrossfade() {
 	a.player.SetCrossfade(fade)
 }
 
+// speedFineDrag is a Ctrl-drag of the speed slider still held, so later
+// movement can be measured from where it began.
+type speedFineDrag struct {
+	key            string
+	origin, anchor float64
+}
+
+// scaleSpeedDrag moves a Ctrl-drag of the speed slider by the factor in
+// settings, from the speed where the drag began. A drag without Ctrl follows
+// the pointer, which is what absolute already is.
+func (a *app) scaleSpeedDrag(key string, before, absolute float64, pressed, ctrl bool) float64 {
+	if !pressed {
+		if a.speedFine.key == key {
+			a.speedFine.key = ""
+		}
+		return absolute
+	}
+	if a.speedFine.key != key {
+		if !ctrl {
+			return absolute
+		}
+		a.speedFine = speedFineDrag{key: key, origin: before, anchor: absolute}
+	}
+	factor := settings.ClampSpeedFine(a.settings.SpeedFine)
+	return snapSpeed(a.speedFine.origin + (absolute-a.speedFine.anchor)*factor)
+}
+
 // setSpeed chooses how fast tracks like the current one play, podcast
 // episodes or music, keeps the choice, and plays the current track at it.
 func (a *app) setSpeed(speed float64) {

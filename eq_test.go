@@ -3,6 +3,7 @@ package main
 import (
 	"path/filepath"
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 
@@ -109,6 +110,37 @@ func TestCrossfadeSwitchAndSliderReachThePlayerAndSurviveARestart(t *testing.T) 
 	tt.Frame()
 	if a.player.Crossfade() != 0 || a.settings.CrossfadeSeconds != seconds {
 		t.Errorf("switching it off left the player at %v and the length at %d s; want 0 and %d s kept", a.player.Crossfade(), a.settings.CrossfadeSeconds, seconds)
+	}
+}
+
+func TestCtrlDragFactorSetting(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	a := newTestApp(t)
+	a.saver.Path = path
+	if settings.ClampSpeedFine(a.settings.SpeedFine) != settings.DefaultSpeedFine {
+		t.Fatalf("factor starts at %v, want %v", a.settings.SpeedFine, settings.DefaultSpeedFine)
+	}
+	a.router.Push("/settings")
+	tt := ui.NewTester(a.view, 1000, 4400)
+	tt.Frame()
+	slider, ok := tt.Find("Ctrl-drag speed")
+	if !ok {
+		t.Fatalf("no Ctrl-drag slider in %q", tt.Texts())
+	}
+	tt.ClickAt(slider.X+slider.W-16, slider.Y+slider.H/2)
+	tt.Frame()
+	if a.settings.SpeedFine < 0.8 || a.settings.SpeedFine > settings.MaxSpeedFine {
+		t.Fatalf("the slider set %v, want the fast end of the factor", a.settings.SpeedFine)
+	}
+	if !tt.HasText(strconv.FormatFloat(a.settings.SpeedFine, 'f', 2, 64) + "×") {
+		t.Fatalf("the factor is not shown: %q", tt.Texts())
+	}
+	a.saver.Save(&a.settings)
+	a.saver.Wait()
+	restarted := newTestApp(t)
+	restarted.settings = settings.Load(path)
+	if restarted.settings.SpeedFine != a.settings.SpeedFine {
+		t.Fatalf("after a restart the factor is %v, want %v", restarted.settings.SpeedFine, a.settings.SpeedFine)
 	}
 }
 

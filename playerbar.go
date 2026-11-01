@@ -242,8 +242,8 @@ func (a *app) speedControl(c *ui.Context, key string) {
 		m3.Elevation(c, panel, 3)
 		ui.Column(c).Gap(12).Children(func() {
 			m3.Text(c, m3.LabelMedium, "Playback").TextColor(sc.OnSurfaceVariant)
-			a.rateSlider(c, "Speed", "Playback speed", key+"-speed", player.MinSpeed, player.MaxSpeed, 0.01, speed, speedLabel, a.setSpeed)
-			a.rateSlider(c, "Pitch", "Pitch in semitones", key+"-pitch", player.MinPitch, player.MaxPitch, 0.1, pitch, pitchLabel, a.setPitch)
+			a.rateSlider(c, "Speed", "Playback speed", key+"-speed", player.MinSpeed, player.MaxSpeed, 0.01, speed, speedLabel, a.setSpeed, true)
+			a.rateSlider(c, "Pitch", "Pitch in semitones", key+"-pitch", player.MinPitch, player.MaxPitch, 0.1, pitch, pitchLabel, a.setPitch, false)
 			a.pitchPresets(c, key, pitch, presetW, textSize)
 			if m3.Button(c, m3.ButtonSpec{Label: "Normal", Kind: m3.TextOnly, Size: m3.Small40, Key: key + "-reset"}).Clicked() {
 				a.resetPlaybackRate()
@@ -347,15 +347,27 @@ func (a *app) pitchPreset(c *ui.Context, key string, semitones int, pitch float6
 }
 
 // rateSlider is one labeled slider of the playback panel. A change applies
-// as the knob moves, so the sound follows the pointer.
-func (a *app) rateSlider(c *ui.Context, title, label, key string, lo, hi, step float64, value float64, format func(float64) string, commit func(float64)) {
+// as the knob moves, so the sound follows the pointer. fine lets a Ctrl-drag
+// of the speed slider move by the factor in settings.
+func (a *app) rateSlider(c *ui.Context, title, label, key string, lo, hi, step float64, value float64, format func(float64) string, commit func(float64), fine bool) {
 	sc := m3.Of(c).Scheme
 	ui.Row(c).AlignItems(ui.Center).Children(func() {
 		m3.Text(c, m3.BodyMedium, title).TextColor(sc.OnSurface)
 		ui.Box(c).Grow(1)
 		m3.Text(c, m3.LabelMedium, format(value)).TextColor(sc.OnSurfaceVariant)
 	})
-	slider := m3.Slider(c, &value, lo, hi, m3.SliderSpec{Label: label, Key: key, Step: step})
+	before := value
+	spec := m3.SliderSpec{Label: label, Key: key, Step: step}
+	if fine {
+		ctrl := c.Modifiers()&ui.Ctrl != 0
+		spec.Adjust = func(absolute float64, pressed bool) float64 {
+			return a.scaleSpeedDrag(key, before, absolute, pressed, ctrl)
+		}
+	}
+	slider := m3.Slider(c, &value, lo, hi, spec)
+	if fine {
+		slider.Tooltip("Hold Ctrl and drag to move more slowly")
+	}
 	if slider.Changed() {
 		commit(value)
 	}

@@ -343,8 +343,10 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 	key := cardKey(item, list, position)
 	card := ui.ButtonBase(c.Key(key))
 	hovered := card.Hovered()
+	// The card's own fill stays put. A hover tint behind the picture would
+	// mark the whole cover dirty, and the cover would be drawn again.
 	card.Column().AlignItems(ui.Start).Width(cardWidth).Shrink(0).Padding(8).Gap(10).Radius(m3.ExtraLarge).Cursor(ui.CursorPointer).
-		Background(m3.Layer(sc.Surface, sc.OnSurface, hoverOpacity(hovered || card.FocusVisible()))).
+		Background(sc.Surface).
 		Label(item.Title)
 	played, menuClicked := false, false
 	var menuButton, menuAnchor ui.Element
@@ -395,18 +397,27 @@ func (a *app) card(c *ui.Context, item youtube.MusicItem, queue []youtube.MusicI
 				}
 			}
 		})
-		m3.EmphasizedText(c, m3.TitleSmall, item.Title).Width(cardArt).SingleLine().TextColor(sc.OnSurface)
-		if item.Subtitle != "" {
-			m3.Text(c, m3.BodySmall, item.Subtitle).Width(cardArt).SingleLine().TextColor(sc.OnSurfaceVariant).Margin(-6, 0, 0)
-		}
+		// The tint sits under the name, and the name passes the pointer on, so
+		// travelling from the picture to the name stays on the card.
+		ui.Column(c).Width(cardArt).Gap(4).PassThrough().
+			Background(m3.Layer(ui.Transparent, sc.OnSurface, hoverOpacity(hovered || card.FocusVisible()))).
+			Children(func() {
+				m3.EmphasizedText(c, m3.TitleSmall, item.Title).Width(cardArt).SingleLine().TextColor(sc.OnSurface).PassThrough()
+				if item.Subtitle != "" {
+					m3.Text(c, m3.BodySmall, item.Subtitle).Width(cardArt).SingleLine().TextColor(sc.OnSurfaceVariant).PassThrough()
+				}
+			})
 		// A menu the pointer opened points at the pointer; one the menu
 		// button opened points at the button.
 		menuAnchor, hasAnchor = a.menu.pointerAnchor(c, key+"-menu")
 	})
 	if hasMenu {
 		pointer := card.RightClicked() || menuButton.RightClicked()
-		x, y, _ := card.PointerPosition()
 		if menuButton.Clicked() || pointer || card.Shortcut(ui.Shift, ui.KeyF10) {
+			// Read the pointer only when the menu opens, so moving over the
+			// artwork leaves the window as it is. Asking every frame redraws
+			// it on every movement.
+			x, y, _ := card.PointerPosition()
 			a.menu.show(key+"-menu", pointer, x, y)
 			menuClicked = true
 		}

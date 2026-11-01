@@ -41,3 +41,4 @@ Preconditions:
 - Settings has a separate `Search settings` button that expands into a local filter; it does not navigate to music search. Stats has no search entry point.
 - `searchBody()` is the last request body. Read it right after the action.
 - Results for an older query must not replace newer ones. Cover it with two queries in a row when you change the search task.
+- The top result reads the pointer only while its menu is opening, the same way a shelf card does.

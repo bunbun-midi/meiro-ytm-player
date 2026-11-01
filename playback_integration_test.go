@@ -1110,6 +1110,79 @@ func TestEpisodesAndMusicPlayAtTheirOwnChosenSpeeds(t *testing.T) {
 	}
 }
 
+// Ctrl-click keeps the speed where it is, instead of jumping to the pointer
+// the way a normal click does. Ctrl-drag then moves by the factor in
+// settings; that scaling is covered in TestScaleSpeedDragFollowsTheFactor,
+// because a drag in the tester cannot carry Ctrl on each pointer event.
+// The pitch slider still follows the pointer with Ctrl held.
+func TestCtrlDragMovesTheSpeedSliderMoreSlowly(t *testing.T) {
+	a := newTestApp(t)
+	a.current = tracks("song")[0]
+	tt := ui.NewTester(a.view, 1180, 850)
+	tt.Frame()
+	tt.Advance(400 * time.Millisecond)
+	if err := tt.Click("1×"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	speed := ttMustFind(t, tt, "Playback speed")
+	y := speed.Y + speed.H/2
+	left := speed.X + 24
+	tt.ClickAt(left, y)
+	tt.Frame()
+	jumped := a.settings.MusicSpeed
+	if jumped > 0.8 {
+		t.Fatalf("clicking the low end of the slider left the speed at %v", jumped)
+	}
+	if err := tt.Click("Normal"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	tt.ClickAtWith(ui.Ctrl, left, y)
+	tt.Frame()
+	if got := a.speedFor(a.current); math.Abs(got-1) > 0.001 {
+		t.Fatalf("Ctrl-click set the speed to %v, want it kept at 1×", got)
+	}
+
+	pitch := ttMustFind(t, tt, "Pitch in semitones")
+	tt.ClickAtWith(ui.Ctrl, pitch.X+pitch.W-24, pitch.Y+pitch.H/2)
+	tt.Frame()
+	if a.settings.MusicPitch < 6 {
+		t.Fatalf("Ctrl-click on the pitch slider set %v, want the upper end", a.settings.MusicPitch)
+	}
+}
+
+// A Ctrl-drag moves the speed by the settings factor times the pointer's
+// travel, from the speed where the drag began. Letting go follows the
+// pointer again.
+func TestScaleSpeedDragFollowsTheFactor(t *testing.T) {
+	a := newTestApp(t)
+	if got := a.scaleSpeedDrag("speed", 1, 1.4, false, true); got != 1.4 {
+		t.Fatalf("a drag that has ended returned %v, want the pointer's 1.4", got)
+	}
+	if got := a.scaleSpeedDrag("speed", 1, 1.4, true, true); got != 1 {
+		t.Fatalf("the first moment of a Ctrl-drag returned %v, want the speed kept at 1", got)
+	}
+	if got := a.scaleSpeedDrag("speed", 1, 1.8, true, false); math.Abs(got-1.1) > 0.001 {
+		t.Fatalf("after the pointer moved 0.4, Ctrl-drag returned %v, want 1.1", got)
+	}
+	a.speedFine.key = ""
+	a.settings.SpeedFine = 0.5
+	a.scaleSpeedDrag("speed", 1, 1.2, true, true)
+	if got := a.scaleSpeedDrag("speed", 1, 1.6, true, true); math.Abs(got-1.2) > 0.001 {
+		t.Fatalf("at half speed the drag returned %v, want 1.2", got)
+	}
+}
+
+func ttMustFind(t *testing.T, tt *ui.Tester, label string) ui.Rect {
+	t.Helper()
+	r, ok := tt.Find(label)
+	if !ok {
+		t.Fatalf("no %s in %q", label, tt.Texts())
+	}
+	return r
+}
+
 // chooseRate moves an open playback slider to an end of its range. The panel
 // is already open. Home and End land on the ends however the drag began.
 func chooseRate(t *testing.T, tt *ui.Tester, label string, key ui.Key) {

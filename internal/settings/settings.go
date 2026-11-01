@@ -124,6 +124,9 @@ type Settings struct {
 	// TimeStretch is how the speed slider stretches time: "Bungee",
 	// "Phase vocoder" or "Overlap-add". Empty means Bungee.
 	TimeStretch string `json:"timeStretch,omitempty"`
+	// SpeedFine is how far a Ctrl-drag moves the speed slider compared with
+	// a normal drag. 0 means the default.
+	SpeedFine float64 `json:"speedFine,omitempty"`
 }
 
 // TrayMark names one of the menu bar icon styles.
@@ -141,6 +144,7 @@ func Defaults() Settings {
 	return Settings{
 		Seed: "#6750a4", Mode: "system", Volume: 70, AutoPlay: true, CacheSongs: audio.DefaultLimit, NotifyTrack: runtime.GOOS != "darwin", ShowTray: runtime.GOOS != "darwin", TrayMark: TrayMarkWordmark,
 		Zoom: DefaultZoom, ShowNotch: true, CrossfadeSeconds: DefaultCrossfade,
+		SpeedFine: DefaultSpeedFine,
 	}
 }
 
@@ -150,6 +154,26 @@ const (
 	MaxCrossfade     = 12
 	DefaultCrossfade = 5
 )
+
+// How far a Ctrl-drag moves the speed slider compared with a normal drag.
+const (
+	// MinSpeedFine is the slowest Ctrl-drag, and MaxSpeedFine matches a
+	// normal drag.
+	MinSpeedFine = 0.05
+	MaxSpeedFine = 1
+	// DefaultSpeedFine is a quarter of a normal drag.
+	DefaultSpeedFine = 0.25
+)
+
+// ClampSpeedFine keeps a Ctrl-drag factor between the ones the settings
+// offer, and reads the zero value of a settings file that has none as the
+// default.
+func ClampSpeedFine(factor float64) float64 {
+	if factor <= 0 {
+		return DefaultSpeedFine
+	}
+	return min(max(factor, MinSpeedFine), MaxSpeedFine)
+}
 
 // ClampCrossfade keeps a crossfade length between the ones the settings
 // offer, and reads the zero value of a settings file that has none as the
@@ -348,6 +372,7 @@ func Parse(data []byte) (Settings, error) {
 	default:
 		read.TimeStretch = ""
 	}
+	read.SpeedFine = ClampSpeedFine(read.SpeedFine)
 	return read, nil
 }
 

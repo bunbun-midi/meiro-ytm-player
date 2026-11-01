@@ -192,19 +192,24 @@ func MenuItem(c *ui.Context, label string, icon *ui.SVG) ui.Element {
 //
 // The picture is rounded as it is drawn. Overlays are built on top of it, so
 // one that covers the corners rounds itself.
+//
+// The frame and the picture pass the pointer through to the control around
+// them. Moving across the picture then stays on that control, instead of
+// stepping from the frame to the picture and asking for a frame each time.
+// An overlay still takes the pointer where it draws.
 func Art(c *ui.Context, art *ui.Bitmap, size, radius float32, overlays ...func()) ui.Element {
 	sc := Of(c).Scheme
-	box := ui.Box(c).Radius(radius).Background(sc.SurfaceContainerHighest).Shrink(0)
+	box := ui.Box(c).Radius(radius).Background(sc.SurfaceContainerHighest).Shrink(0).PassThrough()
 	if size > 0 {
 		box.Size(size, size)
 	}
 	box.Children(func() {
 		if art == nil {
-			ui.Box(c).Fill().Center().Children(func() {
-				ui.Icon(c, IconMusicNote).FontSize(max(size*0.4, 18)).TextColor(sc.OnSurfaceVariant.Alpha(0.6))
+			ui.Box(c).Fill().Center().PassThrough().Children(func() {
+				ui.Icon(c, IconMusicNote).FontSize(max(size*0.4, 18)).TextColor(sc.OnSurfaceVariant.Alpha(0.6)).PassThrough()
 			})
 		} else {
-			ui.Image(c, art).Fit(ui.Cover).Fill().Radius(radius)
+			ui.Image(c, art).Fit(ui.Cover).Fill().Radius(radius).PassThrough()
 		}
 		for _, overlay := range overlays {
 			overlay()
@@ -222,10 +227,10 @@ func VideoBadge(c *ui.Context, artSize float32) {
 	height := fontSize * 1.8
 	width := min(fontSize*5.8, available)
 	badge := ui.Box(c).Size(width, height).Attach(ui.AnchorTopLeft, ui.AnchorTopLeft).
-		Top(inset).Left(inset).Radius(Full).Background(sc.Scrim.Alpha(0.55)).Center().Label("Video")
+		Top(inset).Left(inset).Radius(Full).Background(sc.Scrim.Alpha(0.55)).Center().Label("Video").PassThrough()
 	badge.Children(func() {
 		LabelSmall.Style(ui.Text(c, "VIDEO"), true).Width(width).FontSize(fontSize).FixedLineHeight(height).
-			TextColor(ui.RGB(255, 255, 255)).TextAlign(ui.Center).SingleLine().Shrink(0)
+			TextColor(ui.RGB(255, 255, 255)).TextAlign(ui.Center).SingleLine().Shrink(0).PassThrough()
 	})
 }
 

@@ -57,6 +57,9 @@ type SliderSpec struct {
 	// leaves the drag continuous and moves the arrow keys by a hundredth of
 	// the range.
 	Step float64
+	// Adjust replaces the value a drag or a key just wrote, before the
+	// track is drawn. pressed reports whether the pointer is held.
+	Adjust func(value float64, pressed bool) float64
 }
 
 // Slider builds an Expressive slider: the active track and the inactive one
@@ -92,6 +95,9 @@ func Slider(c *ui.Context, value *float64, lo, hi float64, spec SliderSpec) ui.E
 	}
 	if spec.Disabled {
 		s.Disabled(true)
+	}
+	if spec.Adjust != nil {
+		*value = spec.Adjust(*value, s.Pressed())
 	}
 
 	frac := float32(0)

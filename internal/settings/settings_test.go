@@ -65,6 +65,20 @@ func TestParseRejectsAFileStillBeingWritten(t *testing.T) {
 	}
 }
 
+func TestClampSpeedFineKeepsCtrlDragInRange(t *testing.T) {
+	for _, tc := range []struct{ in, want float64 }{
+		{0, DefaultSpeedFine},
+		{-1, DefaultSpeedFine},
+		{0.01, MinSpeedFine},
+		{0.25, 0.25},
+		{2, MaxSpeedFine},
+	} {
+		if got := ClampSpeedFine(tc.in); got != tc.want {
+			t.Errorf("ClampSpeedFine(%v) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestClampZoomKeepsTheInterfaceReadable(t *testing.T) {
 	for _, tc := range []struct{ in, want int }{
 		{0, DefaultZoom}, // a settings file from before the field

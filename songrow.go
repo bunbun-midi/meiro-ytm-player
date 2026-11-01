@@ -108,30 +108,34 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 			} else if selected {
 				titleColour, subColour = sc.OnPrimary, sc.OnPrimary.Alpha(0.8)
 			}
+			// The picture, the name and the length pass the pointer on to the
+			// row. Moving across them stays on the row, so the window is
+			// drawn again when the pointer enters the row and not on the
+			// way across it.
 			if o.number > 0 {
-				ui.Row(c).Size(artSize, artSize).Shrink(0).Center().Children(func() {
+				ui.Row(c).Size(artSize, artSize).Shrink(0).Center().PassThrough().Children(func() {
 					switch {
 					case playing && a.loading():
-						m3.LoadingIndicatorIn(c, iconSize, sc.Primary)
+						m3.LoadingIndicatorIn(c, iconSize, sc.Primary).PassThrough()
 					case playing:
-						m3.Equalizer(c, 18, a.player.Playing(), sc.Primary)
+						m3.Equalizer(c, 18, a.player.Playing(), sc.Primary).PassThrough()
 					case hovered && isSong:
-						ui.Icon(c, m3.IconPlay).FontSize(iconSize).TextColor(sc.OnSurface)
+						ui.Icon(c, m3.IconPlay).FontSize(iconSize).TextColor(sc.OnSurface).PassThrough()
 					default:
-						m3.Text(c, m3.BodyLarge, strconv.Itoa(o.number)).TextColor(sc.OnSurfaceVariant)
+						m3.Text(c, m3.BodyLarge, strconv.Itoa(o.number)).TextColor(sc.OnSurfaceVariant).PassThrough()
 					}
 				})
 			} else {
 				a.art(c, item.Thumbnail, artPixels, artSize, artRadius(item, m3.Medium), func() {
 					if isSong && (playing || hovered) {
-						ui.Box(c).Fill().Attach(ui.AnchorTopLeft, ui.AnchorTopLeft).Radius(artRadius(item, m3.Medium)).Center().Background(sc.Scrim.Alpha(0.45)).Children(func() {
+						ui.Box(c).Fill().Attach(ui.AnchorTopLeft, ui.AnchorTopLeft).Radius(artRadius(item, m3.Medium)).Center().Background(sc.Scrim.Alpha(0.45)).PassThrough().Children(func() {
 							switch {
 							case playing && a.loading():
-								m3.LoadingIndicatorIn(c, iconSize, ui.RGB(255, 255, 255))
+								m3.LoadingIndicatorIn(c, iconSize, ui.RGB(255, 255, 255)).PassThrough()
 							case playing:
-								m3.Equalizer(c, 18, a.player.Playing(), ui.RGB(255, 255, 255))
+								m3.Equalizer(c, 18, a.player.Playing(), ui.RGB(255, 255, 255)).PassThrough()
 							default:
-								ui.Icon(c, m3.IconPlay).FontSize(iconSize).TextColor(ui.RGB(255, 255, 255))
+								ui.Icon(c, m3.IconPlay).FontSize(iconSize).TextColor(ui.RGB(255, 255, 255)).PassThrough()
 							}
 						})
 					}
@@ -140,27 +144,27 @@ func (a *app) songRow(c *ui.Context, item youtube.MusicItem, queue []youtube.Mus
 					}
 				})
 			}
-			ui.Column(c).Grow(1).MinWidth(0).Gap(0).Children(func() {
-				title := m3.Text(c, titleRole, item.Title).SingleLine().TextColor(titleColour)
+			ui.Column(c).Grow(1).MinWidth(0).Gap(0).PassThrough().Children(func() {
+				title := m3.Text(c, titleRole, item.Title).SingleLine().TextColor(titleColour).PassThrough()
 				if playing {
 					title.FontWeight(600)
 				}
 				if described {
-					m3.Text(c, m3.BodyMedium, item.Description).MaxLines(2).TextColor(subColour).Padding(2, 0)
+					m3.Text(c, m3.BodyMedium, item.Description).MaxLines(2).TextColor(subColour).Padding(2, 0).PassThrough()
 				}
 				if item.Subtitle != "" {
-					m3.Text(c, subtitleRole, item.Subtitle).SingleLine().TextColor(subColour)
+					m3.Text(c, subtitleRole, item.Subtitle).SingleLine().TextColor(subColour).PassThrough()
 				}
 			})
 			if isSong && a.isDownloaded(item.VideoID) {
-				ui.Icon(c, m3.IconDownloadDone).FontSize(18).TextColor(subColour).Label("Downloaded")
+				ui.Icon(c, m3.IconDownloadDone).FontSize(18).TextColor(subColour).Label("Downloaded").PassThrough()
 			}
 			switch {
 			case item.Duration != "":
 				m3.Text(c, m3.BodyMedium, item.Duration).SingleLine().Width(48).TextAlign(ui.End).
-					TextColor(subColour).Shrink(0).FontFeatures("tnum")
+					TextColor(subColour).Shrink(0).FontFeatures("tnum").PassThrough()
 			case !isSong:
-				ui.Icon(c, m3.IconChevronRight).FontSize(24).TextColor(sc.OnSurfaceVariant)
+				ui.Icon(c, m3.IconChevronRight).FontSize(24).TextColor(sc.OnSurfaceVariant).PassThrough()
 			}
 			// A menu the pointer opened points at the pointer; one the menu
 			// button opened points at the button.

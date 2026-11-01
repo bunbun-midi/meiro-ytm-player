@@ -220,8 +220,8 @@ func (a *app) suggestionRow(c *ui.Context, query string) {
 		Cursor(ui.CursorPointer).Label(query).
 		Background(m3.StateFill(ui.Transparent, sc.OnSurface, row.Hovered(), row.Pressed(), row.FocusVisible()))
 	row.Children(func() {
-		ui.Icon(c, m3.IconSearch).FontSize(20).TextColor(sc.OnSurfaceVariant)
-		m3.Text(c, m3.BodyLarge, query).Grow(1).MinWidth(0).SingleLine().TextColor(sc.OnSurface)
+		ui.Icon(c, m3.IconSearch).FontSize(20).TextColor(sc.OnSurfaceVariant).PassThrough()
+		m3.Text(c, m3.BodyLarge, query).Grow(1).MinWidth(0).SingleLine().TextColor(sc.OnSurface).PassThrough()
 	})
 	if row.Clicked() {
 		// The panel hangs under the field every page searches from, so a
@@ -245,10 +245,10 @@ func (a *app) suggestionItem(c *ui.Context, item youtube.MusicItem, tracks []you
 	hasAnchor := false
 	row.Children(func() {
 		a.art(c, item.Thumbnail, 128, 40, artRadius(item, m3.Small))
-		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-			m3.Text(c, m3.BodyLarge, item.Title).SingleLine().TextColor(sc.OnSurface)
+		ui.Column(c).Grow(1).MinWidth(0).PassThrough().Children(func() {
+			m3.Text(c, m3.BodyLarge, item.Title).SingleLine().TextColor(sc.OnSurface).PassThrough()
 			if item.Subtitle != "" {
-				m3.Text(c, m3.BodySmall, item.Subtitle).SingleLine().TextColor(sc.OnSurfaceVariant)
+				m3.Text(c, m3.BodySmall, item.Subtitle).SingleLine().TextColor(sc.OnSurfaceVariant).PassThrough()
 			}
 		})
 		// A menu the pointer opened points at the pointer, in the row's own
@@ -367,8 +367,10 @@ func (a *app) topResult(c *ui.Context, item youtube.MusicItem) {
 	target := item.Target()
 	key := "top-result"
 	card := ui.ButtonBase(c.Key(key))
+	// The fill stays clear. A hover tint behind the picture would mark the
+	// cover dirty, and the cover would be drawn again.
 	card.Padding(8).Margin(0, pageGutter-8).Gap(20).Radius(m3.ExtraLarge).AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(item.Title).
-		Background(m3.StateFill(ui.Transparent, sc.OnSurface, card.Hovered(), card.Pressed(), card.FocusVisible()))
+		Background(ui.Transparent)
 	played, shuffled, menuClicked := false, false, false
 	hovered := card.Hovered()
 	var menuButton, menuAnchor ui.Element
@@ -397,40 +399,45 @@ func (a *app) topResult(c *ui.Context, item youtube.MusicItem) {
 				}
 			}
 		})
-		ui.Column(c).Grow(1).MinWidth(0).Gap(6).Children(func() {
-			m3.EmphasizedText(c, m3.HeadlineSmall, item.Title).MaxLines(2).TextColor(sc.OnSurface)
-			if item.Subtitle != "" {
-				m3.Text(c, m3.BodyMedium, item.Subtitle).SingleLine().TextColor(sc.OnSurfaceVariant)
-			}
-			switch target.Kind {
-			case youtube.TargetTrack:
-				ui.Row(c).Padding(4, 0, 0).Children(func() {
-					if m3.Button(c, m3.ButtonSpec{Label: "Play", Icon: m3.IconPlay, Size: m3.Small40, Key: key + "-play"}).Clicked() {
-						played = true
-					}
-				})
-			case youtube.TargetAlbum, youtube.TargetPlaylist, youtube.TargetArtist:
-				ui.Row(c).Gap(8).Padding(4, 0, 0).Children(func() {
-					if m3.Button(c, m3.ButtonSpec{Label: "Play", Icon: m3.IconPlay, Size: m3.Small40, Key: key + "-play"}).Clicked() {
-						played = true
-					}
-					if m3.Button(c, m3.ButtonSpec{Label: "Shuffle", Icon: m3.IconShuffle, Kind: m3.Tonal, Size: m3.Small40, Key: key + "-shuffle"}).Clicked() {
-						shuffled = true
-					}
-				})
-			case youtube.TargetPodcast, youtube.TargetNone:
-				// A show is followed from its page, episode by episode, not
-				// played whole from its card.
-			}
-		})
+		ui.Column(c).Grow(1).MinWidth(0).Gap(6).PassThrough().
+			Background(m3.StateFill(ui.Transparent, sc.OnSurface, hovered, card.Pressed(), card.FocusVisible())).
+			Children(func() {
+				m3.EmphasizedText(c, m3.HeadlineSmall, item.Title).MaxLines(2).TextColor(sc.OnSurface).PassThrough()
+				if item.Subtitle != "" {
+					m3.Text(c, m3.BodyMedium, item.Subtitle).SingleLine().TextColor(sc.OnSurfaceVariant).PassThrough()
+				}
+				switch target.Kind {
+				case youtube.TargetTrack:
+					ui.Row(c).Padding(4, 0, 0).PassThrough().Children(func() {
+						if m3.Button(c, m3.ButtonSpec{Label: "Play", Icon: m3.IconPlay, Size: m3.Small40, Key: key + "-play"}).Clicked() {
+							played = true
+						}
+					})
+				case youtube.TargetAlbum, youtube.TargetPlaylist, youtube.TargetArtist:
+					ui.Row(c).Gap(8).Padding(4, 0, 0).PassThrough().Children(func() {
+						if m3.Button(c, m3.ButtonSpec{Label: "Play", Icon: m3.IconPlay, Size: m3.Small40, Key: key + "-play"}).Clicked() {
+							played = true
+						}
+						if m3.Button(c, m3.ButtonSpec{Label: "Shuffle", Icon: m3.IconShuffle, Kind: m3.Tonal, Size: m3.Small40, Key: key + "-shuffle"}).Clicked() {
+							shuffled = true
+						}
+					})
+				case youtube.TargetPodcast, youtube.TargetNone:
+					// A show is followed from its page, episode by episode, not
+					// played whole from its card.
+				}
+			})
 		// A menu the pointer opened points at the pointer; one the menu
 		// button opened points at the button.
 		menuAnchor, hasAnchor = a.menu.pointerAnchor(c, key+"-menu")
 	})
 	if hasMenu {
 		pointer := card.RightClicked() || menuButton.RightClicked()
-		x, y, _ := card.PointerPosition()
 		if menuButton.Clicked() || pointer || card.Shortcut(ui.Shift, ui.KeyF10) {
+			// Read the pointer only when the menu opens, so moving over the
+			// artwork leaves the window as it is. Asking every frame redraws
+			// it on every movement.
+			x, y, _ := card.PointerPosition()
 			a.menu.show(key+"-menu", pointer, x, y)
 			menuClicked = true
 		}

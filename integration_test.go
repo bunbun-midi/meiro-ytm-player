@@ -1374,6 +1374,34 @@ func TestAPlaylistPageCanBeSearched(t *testing.T) {
 	}
 }
 
+// Moving across a cover must leave the window settled. A card that asks where
+// the pointer is on every frame makes the window redraw on every movement,
+// which is what slows the cursor. A right click still opens the menu there.
+func TestMovingAcrossACardLeavesTheWindowSettled(t *testing.T) {
+	a := newTestApp(t)
+	a.router.Push("/home")
+	tt := ui.NewTester(a.view, 1180, 850)
+	tt.Frame()
+	card, ok := tt.Find("Deep Focus")
+	if !ok {
+		t.Fatalf("home has no album card: %q", tt.Texts())
+	}
+	for _, x := range []float32{card.X + 8, card.X + card.W/2, card.X + card.W - 8} {
+		tt.Move(x, card.Y+card.H/2)
+		if tt.FramePending() {
+			t.Fatalf("moving across the artwork left a frame pending at x=%g", x)
+		}
+	}
+	if _, ok := tt.Find("Play Deep Focus"); !ok {
+		t.Fatal("the pointer over the card showed no play button")
+	}
+	tt.RightClickAt(card.X+card.W/2, card.Y+card.H/2)
+	tt.Frame()
+	if !tt.HasText("Open album") || a.router.Path() != "/home" {
+		t.Fatalf("the right click did not open the menu in place: %q at %q", tt.Texts(), a.router.Path())
+	}
+}
+
 func TestBrowsingFromHomeIntoAnAlbum(t *testing.T) {
 	a := newTestApp(t)
 	a.router.Push("/home")

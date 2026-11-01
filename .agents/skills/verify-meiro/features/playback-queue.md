@@ -16,8 +16,10 @@ A user plays a track, controls the player bar, edits the queue, and finds the sa
   the vertical volume slider on hover.
 - `play-speed` sets playback speed from 0.05× to 1.8× in steps of 0.01, and
   pitch from −12 to +12 semitones in steps of 0.1. Dragging either slider
-  changes the sound immediately and does not interrupt playback. Buttons
-  `0`, `+1` through `+12` and `−1` through `−12` set the pitch to that
+  changes the sound immediately and does not interrupt playback. Holding
+  Ctrl while dragging the speed slider moves it by the Ctrl-drag factor in
+  Settings → Sound, a quarter of a normal drag until that factor is changed.
+  Buttons `0`, `+1` through `+12` and `−1` through `−12` set the pitch to that
   semitone; the one that matches stays highlighted. The numbers on `+10`,
   `+11`, `+12` and `−10`, `−11`, `−12` are shown in full. Songs and podcasts
   each remember both. A pitch change does not change the pace, and it does
@@ -33,7 +35,7 @@ A user plays a track, controls the player bar, edits the queue, and finds the sa
 
 - Click a track row. Click `Play` or `Shuffle` on an album, playlist or artist page.
 - Use the player bar buttons `Shuffle`, `Previous`, `Next`, `Repeat`, `Mute`, and the `Position` and `Volume` sliders.
-- Click the speed button (it reads `1×` until you change it) and drag `Playback speed` or `Pitch in semitones`. The sound follows the slider while it moves, without a gap. `0`, `+1` through `+12` and `−1` through `−12` set the pitch to that semitone. `Normal` puts both back. `End` and `Home` on a focused slider reach its ends. Music and podcasts keep separate values.
+- Click the speed button (it reads `1×` until you change it) and drag `Playback speed` or `Pitch in semitones`. The sound follows the slider while it moves, without a gap. Hold Ctrl while dragging `Playback speed` to move it by the Ctrl-drag factor. `0`, `+1` through `+12` and `−1` through `−12` set the pitch to that semitone. `Normal` puts both back. `End` and `Home` on a focused slider reach its ends. Music and podcasts keep separate values.
 - In a narrow window, hover `Mute` to reveal the vertical `Volume` slider;
   move onto the slider and drag it to adjust playback without losing the panel.
 - Click `Up next` in the player bar, or `Open the player`, to open the player panel with `Up next`, `Lyrics` and `Related`.

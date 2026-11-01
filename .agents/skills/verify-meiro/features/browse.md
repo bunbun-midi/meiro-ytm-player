@@ -37,3 +37,4 @@ Preconditions:
 - Compare the heading, not the path. A route that failed to match draws the `Not found` page at a valid-looking path.
 - `a.router.Push` is the test's shortcut for navigation. Also click one real entry point per proof.
 - Current album responses put `musicResponsiveHeaderRenderer` in the primary tab's section list. Its `thumbnail` is the album cover; `straplineThumbnail` is an artist portrait. Never fill missing page art from tracks or related albums.
+- A card reads the pointer only while its menu is opening, and the picture passes the pointer through to the card. The hover tint sits under the name, so the cover is left as it was. `TestMovingAcrossACardLeavesTheWindowSettled` moves across `Deep Focus` and expects no frame left pending, then a right click that offers `Open album` without leaving Home.
