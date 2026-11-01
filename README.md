@@ -18,6 +18,7 @@ A lightweight desktop music player for YouTube Music. Meiro has a native
 interface rather than a browser-based one, and typically uses about 100 MB of
 memory. It plays music without loading the YouTube Music web page, and can
 scrobble your listening to Last.fm.
+edit by bunbun: i added bungee based timeshifting, and added pitchshifting, and you can change the semitone shift with buttons -12 to 0 to +12 semitones, and there's an option in the configuration to increase the size of the history past the previous default 5000 tracks, and you can also view the track history in its entirety (before we could only see the top songs).
 
 <p align="center">
   <a href="docs/screenshots/lyrics.png"><img src="docs/screenshots/lyrics.png" alt="Full player with synced lyrics, the sung line lit in the middle" width="720"></a>
