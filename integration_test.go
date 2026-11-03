@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"errors"
 	"image"
 	"io"
@@ -17,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/elianiva/meiro/internal/artwork"
@@ -1738,6 +1741,71 @@ func TestHistoryLimitAndBrowser(t *testing.T) {
 	tt.Frame()
 	if !tt.HasText("Needle") || !tt.HasText("1 play") || tt.HasText("Filler 0") {
 		t.Fatalf("date range = %q", tt.Texts())
+	}
+}
+
+// Export history writes every kept play to the file the save dialog returns.
+// Cancelling the dialog writes nothing.
+func TestExportHistoryWritesASpreadsheet(t *testing.T) {
+	a := newTestApp(t)
+	when := time.Date(2026, 6, 1, 15, 4, 5, 0, time.Local)
+	a.historyLoaded = true
+	a.history = []history.Entry{
+		{VideoID: "a", Title: `Say "hi", friend`, Artist: "One, Two", PlayedAt: when},
+		{VideoID: "b", Title: "Plain", Artist: "Solo", PlayedAt: when.Add(time.Minute)},
+	}
+	dir := t.TempDir()
+	var asked mygo.SaveDialogOptions
+	a.pickSavePath = func(opts mygo.SaveDialogOptions) (string, error) {
+		asked = opts
+		return filepath.Join(dir, "plays"), nil
+	}
+	a.router.Push("/settings")
+	tt := ui.NewTester(a.view, 1000, 900)
+	tt.Frame()
+	if err := tt.Click("Search settings"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("export")
+	tt.Frame()
+	if err := tt.Click("Export history"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !strings.HasSuffix(asked.DefaultPath, "meiro-history.csv") || asked.Title != "Export listening history" {
+		t.Fatalf("save dialog = %+v", asked)
+	}
+	path := filepath.Join(dir, "plays.csv")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := csv.NewReader(bytes.NewReader(data)).ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 || rows[1][1] != `Say "hi", friend` || rows[1][2] != "One, Two" || rows[2][1] != "Plain" {
+		t.Fatalf("spreadsheet = %#v", rows)
+	}
+	if !tt.HasText("Exported 2 plays.") {
+		t.Fatalf("notice = %q", tt.Texts())
+	}
+
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.pickSavePath = func(mygo.SaveDialogOptions) (string, error) { return "", nil }
+	if err := tt.Click("Export history"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.notice != "" || !bytes.Equal(before, after) {
+		t.Fatalf("cancelling the dialog changed the file or said %q", a.notice)
 	}
 }
 

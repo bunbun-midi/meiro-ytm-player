@@ -6,6 +6,10 @@ go_library(
         "equalizer.go",
         "fade.go",
         "null.go",
+        "output.go",
+        "output_legacy.go",
+        "output_other.go",
+        "output_windows.go",
         "player.go",
         "rate.go",
         "vocoder.go",
@@ -15,7 +19,15 @@ go_library(
     ],
     importpath = "github.com/elianiva/meiro/player",
     visibility = ["//visibility:public"],
-    deps = ["@com_github_ebitengine_oto_v3//:oto"],
+    deps = ["@com_github_ebitengine_oto_v3//:oto"] + select({
+        "@rules_go//go/platform:windows_amd64": [
+            "@org_golang_x_sys//windows",
+        ],
+        "@rules_go//go/platform:windows_arm64": [
+            "@org_golang_x_sys//windows",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 go_test(
@@ -24,6 +36,8 @@ go_test(
         "eq_test.go",
         "fade_test.go",
         "integration_test.go",
+        "output_test.go",
+        "output_windows_test.go",
         "player_test.go",
         "rate_test.go",
     ],

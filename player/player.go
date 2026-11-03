@@ -1,13 +1,15 @@
 // Package player plays one audio stream at a time.
 //
 // It asks ffmpeg, in a child process, to decode a stream into signed 16-bit
-// stereo PCM, and hands those samples to oto, which writes them to the
-// system's audio device. Decoding in a child process keeps the app free of
-// cgo and of codecs of its own, and lets it play anything ffmpeg reads.
+// stereo PCM, and writes those samples to the system audio device. On
+// Windows that device is a WASAPI shared stream, and the endpoint can be
+// chosen. Elsewhere oto writes them. Decoding in a child process keeps the
+// app free of cgo and of codecs of its own, and lets it play anything
+// ffmpeg reads.
 //
 // The zero value is not usable; call New. All methods are safe for
 // concurrent use, so the user interface can drive the player from the main
-// thread while oto reads samples in the background.
+// thread while the output reads samples in the background.
 package player
 
 import (
@@ -31,8 +33,8 @@ import (
 
 const (
 	// sampleRate, channelCount and bytesPerSample are the PCM format the
-	// player asks ffmpeg for and gives oto. 48 kHz stereo is what most
-	// YouTube Music audio decodes from.
+	// player asks ffmpeg for and writes to the output. 48 kHz stereo is
+	// what most YouTube Music audio decodes from.
 	sampleRate     = 48000
 	channelCount   = 2
 	bytesPerSample = 2
@@ -911,9 +913,9 @@ func (p *Player) stop() {
 		return
 	}
 	close(s.quit)
-	// ffmpeg goes first, and the pipe with it. oto may be blocked reading a
-	// stream that has stalled, and PauseAndStopReading waits for that read, on
-	// the thread of whoever pressed stop.
+	// ffmpeg goes first, and the pipe with it. The output may be blocked
+	// reading a stream that has stalled, and PauseAndStopReading waits for
+	// that read, on the thread of whoever pressed stop.
 	if s.cmd.Process != nil {
 		_ = s.cmd.Process.Kill()
 	}
@@ -1006,19 +1008,21 @@ type otoDevice struct{ ctx *oto.Context }
 func (d otoDevice) newPlayer(r io.Reader) output { return d.ctx.NewPlayer(r) }
 func (d otoDevice) Err() error                   { return d.ctx.Err() }
 
-// sharedAudio opens an audio device once and remembers the outcome. Oto allows
-// one context per process and cannot retry a failed open, so a failure is
-// kept rather than hidden behind a second attempt that would only report
-// "context is already created".
+// sharedAudio opens one playback device for the process and remembers the
+// outcome. A later UseOutputDevice retargets that device when the platform
+// can. Oto allows one context per process and cannot retry a failed open, so
+// a failure is kept rather than hidden behind a second attempt that would
+// only report "context is already created".
 type sharedAudio struct {
-	open func() (device, error)
-	once sync.Once
-	dev  device
-	err  error
+	open    func() (device, error)
+	once    sync.Once
+	started atomic.Bool
+	dev     device
+	err     error
 }
 
 // processAudio is the context every Player shares.
-var processAudio = &sharedAudio{open: openOto}
+var processAudio = &sharedAudio{open: openOutput}
 
 func openOto() (device, error) {
 	ctx, ready, err := oto.NewContext(&oto.NewContextOptions{
@@ -1037,6 +1041,10 @@ func openOto() (device, error) {
 // context opens the audio device on first use, and reports why it could not.
 func (a *sharedAudio) context() (device, error) {
 	a.once.Do(func() {
+		// Mark the open as started before calling open, so a concurrent
+		// UseOutputDevice either stores its endpoint in time for this open
+		// to read it, or sees the open and retargets the device afterwards.
+		a.started.Store(true)
 		dev, err := a.open()
 		if err != nil {
 			a.err = fmt.Errorf("player: open the audio device: %w", err)
@@ -1046,6 +1054,9 @@ func (a *sharedAudio) context() (device, error) {
 	})
 	return a.dev, a.err
 }
+
+// opened reports whether context has begun opening the device.
+func (a *sharedAudio) opened() bool { return a.started.Load() }
 
 // audioFailure returns why the device or the session's output stopped working,
 // or nil. The caller must not hold p.mu.

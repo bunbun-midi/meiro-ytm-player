@@ -47,6 +47,9 @@ type Settings struct {
 	// LogVolume makes the volume slider follow a logarithmic curve, with finer
 	// steps at low volumes. Off keeps the slider linear.
 	LogVolume bool `json:"logVolume,omitempty"`
+	// OutputDevice is the Windows playback endpoint, or empty to follow the
+	// device Windows is using.
+	OutputDevice string `json:"outputDevice,omitempty"`
 	// AutoPlay adds YouTube Music's generated queue after the selected tracks.
 	AutoPlay bool `json:"autoPlay"`
 	// AutoSkipDisliked skips tracks known to have a thumbs-down.

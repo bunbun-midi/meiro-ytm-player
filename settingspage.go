@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"log"
 	"math"
 	"path/filepath"
 	"runtime"
@@ -58,7 +60,7 @@ var settingsRows = []settingsRow{
 
 	{key: "h-look", heading: "Appearance and sound"},
 	{key: "appearance", search: "theme appearance system light dark colour color colours colors violet indigo blue sky teal green lime amber orange red rose orchid hue palette tonal spot vibrant expressive neutral monochrome artwork dynamic matugen source", card: (*app).appearanceCard},
-	{key: "sound", search: "sound audio normalize loudness logarithmic equaliser volume bungee phase vocoder overlap-add time stretch speed ctrl drag fine", card: (*app).soundCard},
+	{key: "sound", search: "sound audio output device speakers headphones normalize loudness logarithmic equaliser volume bungee phase vocoder overlap-add time stretch speed ctrl drag fine", card: (*app).soundCard},
 
 	{key: "h-playback", heading: "Playback"},
 	{key: "playback", search: "auto skip disliked songs thumbs down", card: (*app).playbackCard},
@@ -70,7 +72,7 @@ var settingsRows = []settingsRow{
 
 	{key: "h-data", heading: "Storage and privacy"},
 	{key: "cache", search: "storage cache playback downloads", card: (*app).playbackCacheCard},
-	{key: "history", search: "privacy history listening plays limit search date", card: (*app).historyCard},
+	{key: "history", search: "privacy history listening plays limit search date export csv spreadsheet", card: (*app).historyCard},
 
 	{key: "h-about", heading: "About and support"},
 	{key: "updates", search: "about updates version", card: (*app).updatesCard},
@@ -356,11 +358,143 @@ func (a *app) playbackCacheCard(c *ui.Context) {
 	})
 }
 
+// outputDeviceRow is the Windows playback-endpoint picker at the top of the
+// Sound card. The list is refreshed when the menu opens, not on every frame.
+func (a *app) outputDeviceRow(c *ui.Context) {
+	sc := m3.Of(c).Scheme
+	ui.Row(c.Key("output-device-row")).Gap(16).AlignItems(ui.Center).Children(func() {
+		settingLabel(c, "Output device", "Where Meiro plays. System default follows the device Windows is using.").Grow(1)
+		ui.Column(c).MaxWidth(320).Shrink(0).Children(func() {
+			picker := m3.Button(c, m3.ButtonSpec{
+				Label: a.outputDeviceLabel(), Icon: m3.IconExpandMore, Kind: m3.Tonal, Size: m3.Small40, Key: "output-device",
+			})
+			if picker.Clicked() {
+				a.outputMenu = !a.outputMenu
+				if a.outputMenu {
+					a.refreshOutputDevices()
+				}
+			}
+			m3.Menu(c, picker, &a.outputMenu, 440, func() {
+				// A machine can have a long list of endpoints. Keep the menu
+				// to about eight rows and scroll the rest.
+				ui.Scroll(c).Key("output-devices").MaxHeight(392).Children(func() {
+					if m3.MenuItem(c, "System default", nil).Clicked() {
+						a.chooseOutputDevice("")
+					}
+					for _, device := range a.outputDeviceCache {
+						if m3.MenuItem(c, device.Name, nil).Clicked() {
+							a.chooseOutputDevice(device.ID)
+						}
+					}
+				})
+			})
+		})
+	})
+	if notice := a.outputDeviceNotice(); notice != "" {
+		m3.Text(c, m3.BodyMedium, notice).TextColor(sc.Error)
+	}
+}
+
+func (a *app) outputDeviceLabel() string {
+	id := a.settings.OutputDevice
+	if id == "" {
+		return "System default"
+	}
+	for _, device := range a.outputDeviceCache {
+		if device.ID == id {
+			return device.Name
+		}
+	}
+	if a.outputDevicesKnown {
+		return "Unavailable device"
+	}
+	return "Output device"
+}
+
+func (a *app) outputDeviceNotice() string {
+	if a.outputDeviceErr != "" {
+		return a.outputDeviceErr
+	}
+	id := a.settings.OutputDevice
+	if id == "" || !a.outputDevicesKnown {
+		return ""
+	}
+	for _, device := range a.outputDeviceCache {
+		if device.ID == id {
+			return ""
+		}
+	}
+	return "That device is unavailable, so Meiro uses the system default."
+}
+
+func (a *app) refreshOutputDevices() {
+	if a.outputDevices == nil {
+		return
+	}
+	list, err := a.outputDevices()
+	if err != nil {
+		log.Printf("output devices: %v", err)
+		a.outputDeviceErr = "Meiro could not list output devices."
+		return
+	}
+	a.outputDeviceCache = labelOutputDevices(list)
+	a.outputDevicesKnown = true
+	if a.outputDeviceErr == "Meiro could not list output devices." {
+		a.outputDeviceErr = ""
+	}
+}
+
+func labelOutputDevices(list []player.OutputDevice) []player.OutputDevice {
+	seen := make(map[string]int, len(list))
+	for _, device := range list {
+		seen[device.Name]++
+	}
+	used := make(map[string]int, len(list))
+	for i := range list {
+		if seen[list[i].Name] < 2 {
+			continue
+		}
+		used[list[i].Name]++
+		if used[list[i].Name] == 1 {
+			continue
+		}
+		list[i].Name = fmt.Sprintf("%s (%d)", list[i].Name, used[list[i].Name])
+	}
+	return list
+}
+
+func (a *app) chooseOutputDevice(id string) {
+	a.outputMenu = false
+	if err := a.player.UseOutputDevice(id); err != nil {
+		log.Printf("output device: %v", err)
+		a.outputDeviceErr = "Meiro could not use that device."
+		return
+	}
+	a.outputDeviceErr = ""
+	if a.settings.OutputDevice == id {
+		return
+	}
+	a.settings.OutputDevice = id
+	a.saveSettings()
+}
+
+func (a *app) applyOutputDevice() {
+	if err := a.player.UseOutputDevice(a.settings.OutputDevice); err != nil {
+		log.Printf("output device: %v", err)
+		a.outputDeviceErr = "Meiro could not use that device."
+		return
+	}
+	a.outputDeviceErr = ""
+}
+
 // soundCard holds the equaliser's bands. Slider changes update the player as
 // they happen; only saving the settings waits for the drag to finish.
 func (a *app) soundCard(c *ui.Context) {
 	sc := m3.Of(c).Scheme
 	a.settingsCard(c, "Sound", m3.IconVolumeUp, func() {
+		if a.outputDevices != nil {
+			a.outputDeviceRow(c)
+		}
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
 			settingLabel(c, "Normalize loudness", "Adjust track gain to keep songs at a more consistent volume. Requires a signed-in YouTube session.").Grow(1)
 			on := a.settings.NormalizeLoudness

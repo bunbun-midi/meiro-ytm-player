@@ -8,9 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Choose the output device.** Settings → Sound → Output device picks which speakers or headphones Meiro plays through on Windows. System default follows the device Windows is using.
 - **Ctrl-drag moves the speed slider more slowly.** Settings → Sound → Ctrl-drag sets how far that drag goes compared with a normal one. It starts at a quarter of the normal speed.
 - **Shift a song's pitch without changing its speed.** The playback control sets the pitch from −12 to +12 semitones, in steps of a tenth, and the key follows the slider as it moves. Buttons for 0 and for each semitone from −12 to +12 set the same pitch. Songs and podcasts remember their own pitch.
 - **Choose how much listening history to keep, and read it.** Settings sets how many plays are kept, up to 1,000,000. Show history lists them, a page at a time once there are more than 100, and can search the track and artist or limit the list to a range of days.
+- **Export listening history.** Settings → Listening history → Export history saves every play kept on this device as a spreadsheet.
 
 ### Changed
 
@@ -19,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **Track notifications show the album cover.** The picture beside the song name is the cover of the track that just started.
 - **Moving across album covers keeps the cursor smooth.** The pointer can travel over a cover, a title and a song row without the window rebuilding on the way, and a cover is left as it was while the play button appears. A right click still opens the cover's menu.
 - **Semitone buttons show +10, +11, +12 and −10, −11, −12 in full.**
 - **Shifting the pitch plays one copy of the sound.**

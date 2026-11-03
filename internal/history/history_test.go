@@ -1,6 +1,8 @@
 package history
 
 import (
+	"bytes"
+	"encoding/csv"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -42,6 +44,31 @@ func TestAppendCapsAndWriteReadsBack(t *testing.T) {
 	}
 	if got := Read(path); len(got) != 2 || got[0] != h[0] {
 		t.Errorf("read back %+v", got)
+	}
+}
+
+func TestWriteCSVKeepsCommasAndQuotes(t *testing.T) {
+	when := time.Date(2026, 6, 1, 15, 4, 5, 0, time.FixedZone("EDT", -4*3600))
+	var buf bytes.Buffer
+	err := WriteCSV(&buf, []Entry{
+		{VideoID: "a", Title: `Say "hi", friend`, Artist: "One, Two", PlayedAt: when},
+		{VideoID: "b", Title: "Plain"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := csv.NewReader(&buf).ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 || rows[0][0] != "Played at" || rows[0][3] != "Video ID" {
+		t.Fatalf("rows = %#v", rows)
+	}
+	if rows[1][0] != when.Format(time.RFC3339) || rows[1][1] != `Say "hi", friend` || rows[1][2] != "One, Two" || rows[1][3] != "a" {
+		t.Fatalf("first play = %#v", rows[1])
+	}
+	if rows[2][0] != "" || rows[2][1] != "Plain" || rows[2][3] != "b" {
+		t.Fatalf("second play = %#v", rows[2])
 	}
 }
 

@@ -59,6 +59,15 @@ type app struct {
 	// What the user chose, and the writer that keeps it.
 	settings settings.Settings
 	saver    settings.Writer
+	// outputDevices lists playback endpoints. Nil hides the picker. Tests
+	// replace it and never open a real device.
+	outputDevices     func() ([]player.OutputDevice, error)
+	outputDeviceCache []player.OutputDevice
+	// outputDevicesKnown is set once a list has been read, so a saved
+	// endpoint is not called unavailable before that.
+	outputDevicesKnown bool
+	outputDeviceErr    string
+	outputMenu         bool
 	// speedFine is the Ctrl-drag of the speed slider still held.
 	speedFine speedFineDrag
 	// settingsSeen is the last settings.json content the watcher read, so it
@@ -80,6 +89,8 @@ type app struct {
 	keyboard keyboardState
 	// openPath shows a file or folder in the system; tests replace it.
 	openPath func(path string) error
+	// pickSavePath asks where to save a file; tests replace it.
+	pickSavePath func(mygo.SaveDialogOptions) (string, error)
 	// logsDir is the folder the log file is in; empty when there is none.
 	logsDir string
 	// notice is a message for the next frame to show as a toast.
@@ -150,16 +161,18 @@ type app struct {
 	// confirmClearHistory is set once the user has asked to clear the history,
 	// until they confirm or keep it.
 	confirmClearHistory bool
-	historyWriter       history.Writer
-	historyLimitText    string
-	historyLimitError   string
-	historySearch       string
-	historyFrom         string
-	historyTo           string
-	historyPageIndex    int
-	historyView         historyMemo
-	statsRange          int // days the stats page covers: 7, 14 or 30
-	stats               statsMemo
+	// historyExporting is set while the save dialog or the export is open.
+	historyExporting  bool
+	historyWriter     history.Writer
+	historyLimitText  string
+	historyLimitError string
+	historySearch     string
+	historyFrom       string
+	historyTo         string
+	historyPageIndex  int
+	historyView       historyMemo
+	statsRange        int // days the stats page covers: 7, 14 or 30
+	stats             statsMemo
 
 	// downloads is the music saved to play offline.
 	downloads downloads
@@ -233,6 +246,7 @@ func newApp() *app {
 	}
 	a.sleep = sleep
 	a.openPath = func(path string) error { return a.desktop.openPath(path) }
+	a.pickSavePath = func(opts mygo.SaveDialogOptions) (string, error) { return mygo.Dialog.Save(opts) }
 	a.account = newAccountState(func(auth *youtube.CookieAuth) *youtube.Client {
 		return youtube.NewClient(youtube.Options{CookieAuth: auth})
 	}, cookies.Sources)

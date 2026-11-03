@@ -40,6 +40,8 @@ import (
 )
 
 func main() {
+	// Before the window exists, so the track toast and the taskbar share one identity.
+	registerToastAppID()
 	// The heap is mostly artwork, which lives as long as the user browses and
 	// then goes at once. The default lets the heap grow to twice what is live
 	// before a collection; half as much costs a little time and saves tens of
@@ -210,6 +212,11 @@ func (a *app) setup() {
 	a.loadEQ()
 	a.applyCrossfade()
 	a.applyStretch()
+	if runtime.GOOS == "windows" && (runtime.GOARCH == "amd64" || runtime.GOARCH == "arm64") {
+		a.outputDevices = player.OutputDevices
+		a.refreshOutputDevices()
+	}
+	a.applyOutputDevice()
 	a.openAudioCache()
 	a.openArtworkCache()
 }

@@ -143,6 +143,12 @@ func (d *desktop) notify(item youtube.MusicItem, icon []byte) {
 		d.notification.Close()
 		d.notification = nil
 	}
+	// A balloon becomes a toast whose picture is the app icon. The cover
+	// has to be the toast's own picture, which the Windows path sends.
+	if len(icon) > 0 && showTrackToast(d, item.Title, item.Subtitle, icon) {
+		d.clearNotificationTray()
+		return
+	}
 	if err := prepareNotificationArtwork(d, icon); err != nil {
 		log.Printf("preparing notification artwork: %v", err)
 	}
@@ -472,6 +478,7 @@ func (d *desktop) close() {
 		d.notch.unwatch = nil
 	}
 	d.keepAwake(false)
+	dismissTrackToast()
 	mygo.GlobalShortcut.UnregisterAll()
 	if d.notification != nil {
 		d.notification.Close()

@@ -229,6 +229,9 @@ func (a *app) applyReloadedSettings(previous settings.Settings) {
 	if s.TimeStretch != previous.TimeStretch {
 		a.applyStretch()
 	}
+	if s.OutputDevice != previous.OutputDevice {
+		a.applyOutputDevice()
+	}
 	if !maps.Equal(s.Shortcuts, previous.Shortcuts) {
 		a.keyboard.keys = nil
 		a.keyboard.problem = ""

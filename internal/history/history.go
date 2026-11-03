@@ -3,8 +3,10 @@
 package history
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"os"
 	"slices"
@@ -72,6 +74,27 @@ func Read(path string) []Entry {
 		return nil
 	}
 	return entries
+}
+
+// WriteCSV writes entries as a spreadsheet, oldest play first. The columns
+// are when it played, the track, the artist and the video id.
+func WriteCSV(w io.Writer, entries []Entry) error {
+	out := csv.NewWriter(w)
+	out.UseCRLF = true
+	if err := out.Write([]string{"Played at", "Title", "Artist", "Video ID"}); err != nil {
+		return err
+	}
+	for _, e := range entries {
+		played := ""
+		if !e.PlayedAt.IsZero() {
+			played = e.PlayedAt.Format(time.RFC3339)
+		}
+		if err := out.Write([]string{played, e.Title, e.Artist, e.VideoID}); err != nil {
+			return err
+		}
+	}
+	out.Flush()
+	return out.Error()
 }
 
 // Write replaces a history file atomically.

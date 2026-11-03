@@ -1,12 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/elianiva/meiro/internal/fsutil"
 	"github.com/elianiva/meiro/internal/history"
 	"github.com/elianiva/meiro/internal/settings"
 	"github.com/elianiva/meiro/m3"
@@ -76,5 +82,72 @@ func (a *app) historyCard(c *ui.Context) {
 				a.navigate(routeHistory)
 			}
 		})
+		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
+			settingLabel(c, "Export", "A spreadsheet of every play kept on this device.").Grow(1)
+			if m3.Button(c, m3.ButtonSpec{
+				Label: "Export history", Kind: m3.Tonal, Size: m3.Medium56, Key: "export-history",
+				Disabled: len(a.history) == 0 || !a.historyLoaded || a.historyExporting,
+			}).Clicked() {
+				a.exportHistory()
+			}
+		})
+	})
+}
+
+// exportHistory asks where to save a spreadsheet of every play kept on
+// this device, then writes it. Cancelling the dialog leaves no file.
+func (a *app) exportHistory() {
+	if a.historyExporting || !a.historyLoaded || len(a.history) == 0 || a.pickSavePath == nil {
+		return
+	}
+	entries := slices.Clone(a.history)
+	home, _ := os.UserHomeDir()
+	name := "meiro-history.csv"
+	if home != "" {
+		name = filepath.Join(home, name)
+	}
+	parent := a.desktop.window()
+	a.historyExporting = true
+	type saved struct {
+		path string
+		err  string
+	}
+	spawn(a, func() saved {
+		path, err := a.pickSavePath(mygo.SaveDialogOptions{
+			Parent: parent, Title: "Export listening history", DefaultPath: name,
+			ButtonLabel: "Export", CreateDirectories: true,
+			Filters: []mygo.FileFilter{{Name: "CSV", Extensions: []string{"csv"}}},
+		})
+		if err != nil {
+			return saved{err: err.Error()}
+		}
+		if path == "" {
+			return saved{}
+		}
+		if !strings.HasSuffix(strings.ToLower(path), ".csv") {
+			path += ".csv"
+		}
+		var buf bytes.Buffer
+		if err := history.WriteCSV(&buf, entries); err != nil {
+			return saved{err: err.Error()}
+		}
+		if err := fsutil.WriteFileAtomic(path, buf.Bytes(), 0o644); err != nil {
+			return saved{err: err.Error()}
+		}
+		return saved{path: path}
+	}, func(s saved) {
+		a.historyExporting = false
+		if s.err != "" {
+			a.notice = "Could not export listening history: " + s.err
+			return
+		}
+		if s.path == "" {
+			return
+		}
+		plays := "plays"
+		if len(entries) == 1 {
+			plays = "play"
+		}
+		a.notice = fmt.Sprintf("Exported %d %s.", len(entries), plays)
 	})
 }

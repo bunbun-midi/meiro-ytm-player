@@ -101,7 +101,7 @@ func (d *desktop) expireNotificationTray() {
 }
 
 // applyNotificationArtwork attaches the cover as the notification's own
-// HICON. The persistent app tray keeps its coloured brand icon.
+// HICON, in addition to the tray icon the toast is posted with.
 func applyNotificationArtwork(d *desktop, title, body string, icon []byte) error {
 	if d.tray == nil {
 		if d.notificationTray != nil {
