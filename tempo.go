@@ -72,6 +72,7 @@ func (a *app) detectTempo(id, rawURL string) {
 		}
 		log.Printf("tempo: video_id=%s bpm=%.1f", id, grid.BPM)
 		a.beats = beatState{id: id, grid: grid, ok: true, done: true}
+		a.applyTargetBPM()
 	})
 }
 

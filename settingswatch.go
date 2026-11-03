@@ -232,6 +232,15 @@ func (a *app) applyReloadedSettings(previous settings.Settings) {
 		s.PodcastPitch != previous.PodcastPitch || s.MusicPitch != previous.MusicPitch) && a.current.VideoID != "" {
 		a.applySpeed()
 	}
+	if s.MusicSpeed != previous.MusicSpeed {
+		a.noteSpeedTouched()
+	}
+	if s.TargetBPM != previous.TargetBPM {
+		a.targetBPMText = formatTargetBPM(s.TargetBPM)
+	}
+	if s.TargetBPMOn && (s.TargetBPMOn != previous.TargetBPMOn || s.TargetBPM != previous.TargetBPM) {
+		a.applyTargetBPM()
+	}
 	if s.TimeStretch != previous.TimeStretch {
 		a.applyStretch()
 	}

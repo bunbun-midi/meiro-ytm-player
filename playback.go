@@ -190,6 +190,7 @@ func (a *app) enterTrack(item youtube.MusicItem, automatic bool) (time.Duration,
 		a.beatTask.stop()
 		a.beats = beatState{}
 		a.playbackURL = ""
+		a.speedTouched = ""
 	}
 	a.current = item
 	a.total = parseDuration(item.Duration)
@@ -664,10 +665,10 @@ func (a *app) pitchFor(item youtube.MusicItem) float64 {
 	return snapPitch(pitch)
 }
 
-// snapSpeed rounds speed to the nearest hundredth and keeps it inside the
+// snapSpeed rounds speed to the nearest thousandth and keeps it inside the
 // speeds the player accepts.
 func snapSpeed(speed float64) float64 {
-	speed = math.Round(speed*100) / 100
+	speed = math.Round(speed*1000) / 1000
 	return min(max(speed, player.MinDragSpeed), player.MaxDragSpeed)
 }
 
@@ -721,6 +722,71 @@ func (a *app) setSpeed(speed float64) {
 	a.setRate(&a.settings.MusicSpeed, &a.settings.PodcastSpeed, snapSpeed(speed))
 }
 
+// setSpeedFromSlider is the speed slider, including a drag past its ends.
+// That choice stays for this track: a target tempo does not move it again.
+func (a *app) setSpeedFromSlider(speed float64) {
+	before := a.speedFor(a.current)
+	a.setSpeed(speed)
+	if a.speedFor(a.current) != before {
+		a.noteSpeedTouched()
+	}
+}
+
+// noteSpeedTouched remembers that the listener chose this track's speed.
+func (a *app) noteSpeedTouched() {
+	if a.current.VideoID != "" && !a.current.IsEpisode() {
+		a.speedTouched = a.current.VideoID
+	}
+}
+
+// applyTargetBPM sets the speed so the current track's tempo matches the
+// target. It waits until that tempo is known, and it leaves a speed the
+// listener chose for this track where they put it. The next track is free
+// to match the target again.
+func (a *app) applyTargetBPM() {
+	if !a.settings.TargetBPMOn || a.settings.TargetBPM <= 0 || a.current.IsEpisode() || a.current.VideoID == "" {
+		return
+	}
+	if a.speedTouched == a.current.VideoID {
+		return
+	}
+	grid, ok := a.currentGrid()
+	if !ok || grid.BPM <= 0 {
+		return
+	}
+	a.setSpeed(a.settings.TargetBPM / grid.BPM)
+}
+
+// formatTargetBPM is the text of a target tempo. No target is a blank field.
+func formatTargetBPM(v float64) string {
+	v = settings.ClampTargetBPM(v)
+	if v == 0 {
+		return ""
+	}
+	return strconv.FormatFloat(v, 'f', -1, 64)
+}
+
+// commitTargetBPM keeps the tempo typed into the playback panel. A blank
+// field clears it. A value that is not a tempo puts the field back.
+func (a *app) commitTargetBPM() {
+	text := strings.TrimSpace(a.targetBPMText)
+	if text == "" {
+		a.settings.TargetBPM = 0
+		a.targetBPMText = ""
+		a.saveSettings()
+		return
+	}
+	v, err := strconv.ParseFloat(text, 64)
+	if err != nil {
+		a.targetBPMText = formatTargetBPM(a.settings.TargetBPM)
+		return
+	}
+	a.settings.TargetBPM = settings.ClampTargetBPM(v)
+	a.targetBPMText = formatTargetBPM(a.settings.TargetBPM)
+	a.saveSettings()
+	a.applyTargetBPM()
+}
+
 // setPitch chooses how many semitones sharp tracks like the current one
 // play, and plays the current track there.
 func (a *app) setPitch(semitones float64) {
@@ -754,6 +820,7 @@ func (a *app) resetPlaybackRate() {
 	}
 	a.saveSettings()
 	a.applySpeed()
+	a.noteSpeedTouched()
 }
 
 // applySpeed plays the current track at its speed and pitch. The audio takes

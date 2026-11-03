@@ -14,7 +14,7 @@ A user plays a track, controls the player bar, edits the queue, and finds the sa
 - `play-resume` restores the queue paused after a restart.
 - `play-volume` keeps the mute button visible in narrow windows and reveals
   the vertical volume slider on hover.
-- `play-speed` sets playback speed from 0.05× to 1.8× in steps of 0.01, and
+- `play-speed` sets playback speed from 0.05× to 1.8× in steps of 0.001, and
   pitch from −12 to +12 semitones in steps of 0.1. Dragging either slider
   changes the sound immediately and does not interrupt playback. Holding
   Ctrl while dragging the speed slider moves it by the Ctrl-drag factor in
@@ -31,7 +31,10 @@ A user plays a track, controls the player bar, edits the queue, and finds the sa
   BPM detection has a tempo for the track. That tempo is one grid for the
   whole track, taken from its steadiest stretch so an intro does not set it.
   The seek bar shows that BPM and the BPM at the current speed, to the right
-  of the measure marks. `Download`, to the right of `Repeat`, saves the song
+  of the measure marks. `Target BPM` in the playback control, off until
+  `Target BPM on` is switched on, sets the speed when a new track's tempo is
+  found so the tempo at that speed matches the number. Moving `Playback speed`
+  leaves that track at the speed it was moved to. `Download`, to the right of `Repeat`, saves the song
   that is playing, as `Artist - Song` in the format chosen under Settings → Sound.
   Songs and podcasts each remember
   both speed and pitch. A pitch change does not change the pace, and it does
@@ -47,7 +50,7 @@ A user plays a track, controls the player bar, edits the queue, and finds the sa
 
 - Click a track row. Click `Play` or `Shuffle` on an album, playlist or artist page.
 - Use the player bar buttons `Playback history`, `Shuffle`, `Previous`, `Next`, `Repeat`, `Download`, `Mute`, and the `Position` and `Volume` sliders. `Playback history` lists recent plays. Right-click one and choose `Add Next` or `Add to Queue` to put that play back in the queue. Listening history does the same from a row's menu. With BPM detection on, `Measure starts` on the seek bar jumps to the nearest measure, and the tempo is written to the right of those marks.
-- Click the speed button (it reads `1×` until you change it) and drag `Playback speed` or `Pitch in semitones`. The sound follows the slider while it moves, without a gap. Hold Ctrl while dragging `Playback speed` to move it by the Ctrl-drag factor. Dragging `Playback speed` past either end keeps that rate, down to `0.01×` or up to `4×`. `0`, `+1` through `+12` and `−1` through `−12` set the pitch to that semitone. `Normal` puts both back. `End` and `Home` on a focused slider reach its ends, `0.05×` and `1.8×`. Music and podcasts keep separate values.
+- Click the speed button (it reads `1×` until you change it) and drag `Playback speed` or `Pitch in semitones`. The speed slider moves in steps of `0.001×`. The sound follows the slider while it moves, without a gap. Hold Ctrl while dragging `Playback speed` to move it by the Ctrl-drag factor. Dragging `Playback speed` past either end keeps that rate, down to `0.01×` or up to `4×`. `0`, `+1` through `+12` and `−1` through `−12` set the pitch to that semitone. `Normal` puts both back. `End` and `Home` on a focused slider reach its ends, `0.05×` and `1.8×`. `Target BPM` and `Target BPM on` sit in that panel. With the switch on, a new track's speed is set so its tempo matches the number, unless `Playback speed` was moved for that track. Music and podcasts keep separate values.
 - In a narrow window, hover `Mute` to reveal the vertical `Volume` slider;
   move onto the slider and drag it to adjust playback without losing the panel.
 - Click `Up next` in the player bar, or `Open the player`, to open the player panel with `Up next`, `Lyrics` and `Related`.

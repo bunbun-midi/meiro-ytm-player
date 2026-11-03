@@ -70,6 +70,11 @@ type app struct {
 	outputMenu         bool
 	// speedFine is the Ctrl-drag of the speed slider still held.
 	speedFine speedFineDrag
+	// speedTouched is the video id whose speed the listener set by moving
+	// the slider. A target tempo leaves that track alone.
+	speedTouched string
+	// targetBPMText is the target tempo being typed in the playback panel.
+	targetBPMText string
 	// settingsSeen is the last settings.json content the watcher read, so it
 	// notices only a change it has not handled. watchSettings starts it, and
 	// then only the watcher's goroutine touches it.

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"maps"
+	"math"
 	"os"
 	"runtime"
 	"slices"
@@ -149,6 +150,11 @@ type Settings struct {
 	// MeasureSnap makes the measure-jump buttons land on the measure grid.
 	// Off, they add the measure's time to the current position.
 	MeasureSnap bool `json:"measureSnap,omitempty"`
+	// TargetBPMOn sets the speed of each new track so the tempo at that
+	// speed matches TargetBPM. Off, the speed stays where it was left.
+	TargetBPMOn bool `json:"targetBPM,omitempty"`
+	// TargetBPM is that tempo, in beats per minute. 0 sets nothing.
+	TargetBPM float64 `json:"targetBPMValue,omitempty"`
 }
 
 // TrayMark names one of the menu bar icon styles.
@@ -186,6 +192,23 @@ const (
 	// DefaultSpeedFine is a quarter of a normal drag.
 	DefaultSpeedFine = 0.25
 )
+
+// ClampTargetBPM keeps a target tempo in beats per minute. Zero, a
+// negative value and a value that is not a number mean no target. Anything
+// else is kept between 1 and 999, to the nearest thousandth.
+func ClampTargetBPM(v float64) float64 {
+	if math.IsNaN(v) || v <= 0 {
+		return 0
+	}
+	v = math.Round(v*1000) / 1000
+	if v < 1 {
+		return 1
+	}
+	if v > 999 {
+		return 999
+	}
+	return v
+}
 
 // ClampSpeedFine keeps a Ctrl-drag factor between the ones the settings
 // offer, and reads the zero value of a settings file that has none as the
@@ -398,6 +421,7 @@ func Parse(data []byte) (Settings, error) {
 	read.SpeedFine = ClampSpeedFine(read.SpeedFine)
 	read.BassDB = ClampBassBoost(read.BassDB)
 	read.DownloadFormat = NormalizeDownloadFormat(read.DownloadFormat)
+	read.TargetBPM = ClampTargetBPM(read.TargetBPM)
 	return read, nil
 }
 

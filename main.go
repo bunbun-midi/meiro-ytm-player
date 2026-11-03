@@ -208,6 +208,7 @@ func (a *app) setup() {
 	}
 	a.cacheSongsText = strconv.Itoa(a.settings.CacheSongs)
 	a.historyLimitText = strconv.Itoa(settings.ClampHistoryLimit(a.settings.HistoryLimit))
+	a.targetBPMText = formatTargetBPM(a.settings.TargetBPM)
 	a.volume = a.settings.Volume
 	a.player.SetVolume(playbackVolume(a.volume, 0, false, a.settings.LogVolume))
 	a.loadEQ()

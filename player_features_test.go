@@ -215,6 +215,60 @@ func TestDownloadFormatDefaultsToMP3(t *testing.T) {
 	}
 }
 
+func TestTargetBPMSetsTheSpeedUntilTheSliderMoves(t *testing.T) {
+	a := newTestApp(t)
+	a.current = tracks("song")[0]
+	a.settings.BPMDetection = true
+	a.beats = beatState{id: "song", ok: true, done: true, grid: bpm.Grid{BPM: 100}}
+	a.settings.TargetBPM = 150
+	a.applyTargetBPM()
+	if got := a.speedFor(a.current); got != 1 {
+		t.Fatalf("with the target off the speed is %v", got)
+	}
+	a.settings.TargetBPM = 0
+
+	tt := ui.NewTester(a.view, 1180, 1000)
+	tt.Frame()
+	tt.Advance(400 * time.Millisecond)
+	if err := tt.Click("1×"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Target BPM"); err != nil {
+		t.Fatalf("no target tempo: %v in %q", err, tt.Texts())
+	}
+	tt.Type("150")
+	tt.Key(0, ui.KeyEnter)
+	tt.Frame()
+	if a.settings.TargetBPM != 150 || a.speedFor(a.current) != 1 {
+		t.Fatalf("after typing, target %v speed %v", a.settings.TargetBPM, a.speedFor(a.current))
+	}
+	if err := tt.Click("Target BPM on"); err != nil {
+		t.Fatalf("no target switch: %v in %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if !a.settings.TargetBPMOn || a.speedFor(a.current) != 1.5 {
+		t.Fatalf("target on = %v, speed = %v, want 1.5×", a.settings.TargetBPMOn, a.speedFor(a.current))
+	}
+
+	a.setSpeedFromSlider(1.2346)
+	if got := a.speedFor(a.current); got != 1.235 {
+		t.Fatalf("slider speed = %v, want 1.235×", got)
+	}
+	a.applyTargetBPM()
+	if got := a.speedFor(a.current); got != 1.235 {
+		t.Fatalf("after the slider moved, speed = %v, want it left at 1.235×", got)
+	}
+
+	a.enterTrack(tracks("next")[0], true)
+	a.settings.BPMDetection = true
+	a.beats = beatState{id: "next", ok: true, done: true, grid: bpm.Grid{BPM: 120}}
+	a.applyTargetBPM()
+	if got := a.speedFor(a.current); got != 1.25 {
+		t.Fatalf("the next track plays at %v×, want 1.25×", got)
+	}
+}
+
 func TestDownloadButtonSavesTheCurrentSong(t *testing.T) {
 	a := newTestApp(t)
 	a.openDownloads(t.TempDir())

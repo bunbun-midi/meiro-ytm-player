@@ -341,10 +341,11 @@ func (a *app) speedControl(c *ui.Context, key string) {
 		m3.Elevation(c, panel, 3)
 		ui.Column(c).Gap(12).Children(func() {
 			m3.Text(c, m3.LabelMedium, "Playback").TextColor(sc.OnSurfaceVariant)
-			a.rateSlider(c, "Speed", "Playback speed", key+"-speed", player.MinSpeed, player.MaxSpeed, 0.01, speed, speedLabel, a.setSpeed, true)
+			a.rateSlider(c, "Speed", "Playback speed", key+"-speed", player.MinSpeed, player.MaxSpeed, 0.001, speed, speedLabel, a.setSpeedFromSlider, true)
 			a.rateSlider(c, "Pitch", "Pitch in semitones", key+"-pitch", player.MinPitch, player.MaxPitch, 0.1, pitch, pitchLabel, a.setPitch, false)
 			a.pitchPresets(c, key, pitch, presetW, textSize)
 			a.measureJumps(c, key)
+			a.targetBPM(c, key)
 			if m3.Button(c, m3.ButtonSpec{Label: "Normal", Kind: m3.TextOnly, Size: m3.Small40, Key: key + "-reset"}).Clicked() {
 				a.resetPlaybackRate()
 			}
@@ -517,6 +518,34 @@ func (a *app) measureJumpButton(c *ui.Context, key string, jump measureJump, rea
 	if b.Clicked() && ready {
 		a.jumpMeasures(jump.n)
 	}
+}
+
+// targetBPM is the tempo a new track is sped up or slowed down to, and the
+// switch that turns that off. The number is kept when Enter is pressed.
+func (a *app) targetBPM(c *ui.Context, key string) {
+	sc := m3.Of(c).Scheme
+	ui.Row(c.Key(key + "-target")).Gap(8).AlignItems(ui.Center).Children(func() {
+		m3.Text(c, m3.BodyMedium, "Target").Shrink(0).TextColor(sc.OnSurface)
+		input := ui.TextInputBase(c.Key(key+"-target-bpm"), &a.targetBPMText).
+			Width(72).Height(40).Shrink(0).Padding(8).Radius(m3.Small).
+			Background(sc.SurfaceContainerHighest).TextColor(sc.OnSurface).FontSize(14).
+			Label("Target BPM").Placeholder("BPM")
+		m3.Text(c, m3.LabelMedium, "BPM").Shrink(0).TextColor(sc.OnSurfaceVariant)
+		ui.Box(c).Grow(1)
+		on := a.settings.TargetBPMOn
+		sw := m3.CompactSwitch(c, &on, "Target BPM on")
+		sw.Tooltip("Set the speed of each new track so its tempo matches. Moving the speed slider keeps the speed you chose for this track.")
+		if input.Submitted() {
+			a.commitTargetBPM()
+		}
+		if sw.Changed() {
+			a.settings.TargetBPMOn = on
+			a.saveSettings()
+			if on {
+				a.commitTargetBPM()
+			}
+		}
+	})
 }
 
 // rateSlider is one labeled slider of the playback panel. A change applies

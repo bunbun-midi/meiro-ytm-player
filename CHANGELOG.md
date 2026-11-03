@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - **See the tempo beside the measure marks.** The seek bar shows the track's BPM and the BPM at the current speed.
+- **Match a tempo.** The playback control has a target BPM. Turn it on and each new track's speed is set so the tempo at that speed matches. Turn it off to leave the speed alone. Moving the speed slider keeps the speed you chose until the next track.
 - **Download the song that's playing.** A button beside Repeat saves it. Settings → Sound → Download folder, under BPM detection, chooses where those songs go, including ones saved from a song's menu. Each file is named Artist - Song. The format is MP3 unless another is chosen there, and an MP3 is tagged with the artist, the title and the album.
 - **Queue a play from listening history.** Right-click a play on the history page and choose Add Next or Add to Queue.
 - **Dynamic bass boost.** Settings → Sound, above the equaliser, raises the loudest low notes by up to 15 dB and leaves the rest of the song where it is.
@@ -24,7 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - **The speed slider uses Bungee.** Settings → Sound → Time stretch can switch it to the phase vocoder or to overlap-add, and the change applies while a track is playing.
-- **Playback speed is a slider.** It runs from 0.05× to 1.8× in steps of 0.01, in the player bar, the full player and the tray's mini player. Dragging the speed or the pitch changes the sound straight away, and the track keeps playing through it. Dragging the speed slider past either end keeps changing the speed at the same rate, down to 0.01× or up to 4×. The pitch stays put when only the speed moves. Songs and podcasts still remember their own speed.
+- **Playback speed is a slider.** It runs from 0.05× to 1.8× in steps of 0.001, in the player bar, the full player and the tray's mini player. Dragging the speed or the pitch changes the sound straight away, and the track keeps playing through it. Dragging the speed slider past either end keeps changing the speed at the same rate, down to 0.01× or up to 4×. The pitch stays put when only the speed moves. Songs and podcasts still remember their own speed.
 
 ### Fixed
 

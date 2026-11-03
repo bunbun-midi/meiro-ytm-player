@@ -59,6 +59,23 @@ func TestWriterKeepsTheLastStateAndLoadRepairsIt(t *testing.T) {
 	}
 }
 
+func TestTargetBPMDefaultsOff(t *testing.T) {
+	got, err := Parse([]byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.TargetBPMOn || got.TargetBPM != 0 {
+		t.Fatalf("target = %v %v", got.TargetBPMOn, got.TargetBPM)
+	}
+	got, err = Parse([]byte(`{"targetBPMValue":2000}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.TargetBPM != 999 {
+		t.Fatalf("clamped target = %v", got.TargetBPM)
+	}
+}
+
 func TestDownloadFormatDefaultsToMP3(t *testing.T) {
 	if got := NormalizeDownloadFormat(""); got != DownloadMP3 {
 		t.Fatalf("empty format = %q", got)
