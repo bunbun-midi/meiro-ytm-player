@@ -201,7 +201,8 @@ func (a *app) setup() {
 		a.restorePlayback(filepath.Join(directory, "playback.json"))
 		a.openScrobbler(secretfile.File{Path: filepath.Join(directory, "lastfm-session.txt"), Keychain: mygo.Secrets, Name: credentialsKey}, filepath.Join(directory, "lastfm-pending.json"))
 		a.openCredits(filepath.Join(directory, "credits.json"))
-		a.openDownloads(filepath.Join(directory, "Downloads"))
+		a.dataDir = directory
+		a.openDownloads(a.downloadFolder())
 	} else {
 		a.account.signIn.err = err.Error()
 	}
@@ -210,6 +211,7 @@ func (a *app) setup() {
 	a.volume = a.settings.Volume
 	a.player.SetVolume(playbackVolume(a.volume, 0, false, a.settings.LogVolume))
 	a.loadEQ()
+	a.applyBass()
 	a.applyCrossfade()
 	a.applyStretch()
 	if runtime.GOOS == "windows" && (runtime.GOARCH == "amd64" || runtime.GOARCH == "arm64") {

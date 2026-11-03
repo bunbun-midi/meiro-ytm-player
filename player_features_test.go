@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 	"time"
@@ -109,6 +110,16 @@ func TestMeasureJumpsAndTicksSeek(t *testing.T) {
 	if a.seekTarget != 4*time.Second {
 		t.Fatalf("clicking the marks landed at %v, want 4s", a.seekTarget)
 	}
+	if !tt.HasText("120 · 120 BPM") {
+		t.Fatalf("tempo readout = %q", tt.Texts())
+	}
+	if err := a.player.SetSpeed(context.Background(), 1.5); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("120 · 180 BPM") {
+		t.Fatalf("adjusted tempo readout = %q", tt.Texts())
+	}
 }
 
 func TestEpisodeHasNoMeasureGrid(t *testing.T) {
@@ -153,5 +164,68 @@ func TestPlaybackHistoryQueuesTheRecordedTrack(t *testing.T) {
 	}
 	if got := a.queue.at(a.queue.len() - 1).VideoID; got != "old-1" {
 		t.Fatalf("end of the queue is %s, want old-1", got)
+	}
+}
+
+func TestHistoryPageQueuesTheRecordedTrack(t *testing.T) {
+	a := newTestApp(t)
+	a.queue.restore(playstate.State{Items: tracks("a", "b"), Index: 0, RecStart: -1})
+	a.current = a.queue.current()
+	a.historyLoaded = true
+	a.history = []history.Entry{{
+		VideoID: "old-1", Title: "Old Song", Artist: "Someone",
+		PlayedAt: time.Date(2026, 6, 1, 15, 0, 0, 0, time.Local),
+	}}
+	a.navigate(routeHistory)
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	if err := tt.RightClick("Old Song"); err != nil {
+		t.Fatalf("no history row: %v in %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if err := tt.Click("Add Next"); err != nil {
+		t.Fatalf("no Add Next: %v in %q", err, tt.Texts())
+	}
+	if a.queue.at(1).VideoID != "old-1" {
+		t.Fatalf("next is %s, want old-1", a.queue.at(1).VideoID)
+	}
+}
+
+func TestDownloadFormatDefaultsToMP3(t *testing.T) {
+	a := newTestApp(t)
+	a.saver.Path = filepath.Join(t.TempDir(), "settings.json")
+	a.router.Push("/settings")
+	tt := ui.NewTester(a.view, 1000, 1600)
+	tt.Frame()
+	if err := tt.Click("Search settings"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("mp3")
+	tt.Frame()
+	if err := tt.Click("M4A"); err != nil {
+		t.Fatalf("no format choice: %v in %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if a.settings.DownloadFormat != settings.DownloadM4A {
+		t.Fatalf("format = %q", a.settings.DownloadFormat)
+	}
+	a.saver.Wait()
+	if got := settings.Load(a.saver.Path).DownloadFormat; got != settings.DownloadM4A {
+		t.Fatalf("saved format = %q", got)
+	}
+}
+
+func TestDownloadButtonSavesTheCurrentSong(t *testing.T) {
+	a := newTestApp(t)
+	a.openDownloads(t.TempDir())
+	a.current = tracks("song")[0]
+	a.current.Title = "Saved Song"
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	if err := tt.Click("Download"); err != nil {
+		t.Fatalf("no download button: %v in %q", err, tt.Texts())
+	}
+	if !tt.HasText("Saved Song") {
+		t.Fatalf("the download was not reported: %q", tt.Texts())
 	}
 }

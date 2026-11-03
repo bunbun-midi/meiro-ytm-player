@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/elianiva/meiro/internal/settings"
 	"github.com/elianiva/meiro/player"
 )
 
@@ -38,6 +39,12 @@ func (a *app) eqBands() []float64 {
 		return nil
 	}
 	return a.settings.EQBands
+}
+
+// applyBass sends the dynamic bass boost to the player.
+func (a *app) applyBass() {
+	a.settings.BassDB = settings.ClampBassBoost(a.settings.BassDB)
+	a.player.SetBass(a.settings.BassBoostOn, a.settings.BassDB)
 }
 
 // applyEQ sends the equaliser's bands to the player and saves the settings.

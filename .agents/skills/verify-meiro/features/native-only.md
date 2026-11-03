@@ -8,7 +8,9 @@ These behaviors need a real window, device, account or network. The headless tes
 - `native-notch` covers macOS camera cutout placement, rounded window clipping and transparency during resizing, hit testing after the closing animation releases its larger canvas, keyboard focus, menu-bar level, fullscreen/Spaces, Dock reactivation while only the notch is visible, and connecting or disconnecting displays. A physical notched MacBook is needed.
 - `native-audio` covers the real sound card, device selection, and volume.
 - `native-media-keys` covers MPRIS on Linux and Now Playing on macOS (`systemmedia/`). The global switches beside Play or pause, Previous, Next, Volume up, Volume down and Mute also need a real window to register the key with the system. Headless tests only save the choice.
-- `native-bpm` covers hearing BPM detection on a real track. Headless tests cover a synthetic click track, the measure marks, and the jump buttons with a tempo already in hand.
+- `native-bpm` covers hearing BPM detection on a real track. Headless tests cover synthetic click tracks, including one tempo held for a minute and a kick that wins over a louder backbeat, plus the measure marks, the tempo readout and the jump buttons with a tempo already in hand. A real song is not heard.
+- `native-download` covers saving a real song from YouTube into the chosen folder. Headless tests press `Download` and see the attempt named; they do not write an audio file.
+- `native-bass` covers hearing the dynamic bass boost. Headless tests check that a low tone gets louder and a high tone stays put.
 - `native-notifications` covers Windows track notifications and their cover icons.
 - `native-youtube` covers real InnerTube responses, real sign-in, and region or age blocks.
 - `native-ytdlp` covers resolving real audio URLs and reading browser cookies.

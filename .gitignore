@@ -13,6 +13,9 @@ mygo_windows_*.syso
 /bazel-*
 /zz_proof*_test.go
 /build2/
+/build-fresh/
+/build3/
+/build4/
 
 # Local Cloudflare Workers state for the website.
 website/.wrangler/

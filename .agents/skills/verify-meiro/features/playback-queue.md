@@ -28,7 +28,12 @@ A user plays a track, controls the player bar, edits the queue, and finds the sa
   matching `Jump back` buttons, move by that many measures of the detected
   tempo. `Snap to measures`, beside those rows, lands on the measure grid
   instead of adding the time to the current position. The buttons wait until
-  BPM detection has a tempo for the track. Songs and podcasts each remember
+  BPM detection has a tempo for the track. That tempo is one grid for the
+  whole track, taken from its steadiest stretch so an intro does not set it.
+  The seek bar shows that BPM and the BPM at the current speed, to the right
+  of the measure marks. `Download`, to the right of `Repeat`, saves the song
+  that is playing, as `Artist - Song` in the format chosen under Settings → Sound.
+  Songs and podcasts each remember
   both speed and pitch. A pitch change does not change the pace, and it does
   not play a second, delayed copy of the sound. The speed uses Bungee.
   Settings → Sound → Time stretch can switch it to the phase vocoder or to
@@ -41,7 +46,7 @@ A user plays a track, controls the player bar, edits the queue, and finds the sa
 ## How to get to it (user POV)
 
 - Click a track row. Click `Play` or `Shuffle` on an album, playlist or artist page.
-- Use the player bar buttons `Playback history`, `Shuffle`, `Previous`, `Next`, `Repeat`, `Mute`, and the `Position` and `Volume` sliders. `Playback history` lists recent plays. Right-click one and choose `Add Next` or `Add to Queue` to put that play back in the queue. With BPM detection on, `Measure starts` on the seek bar jumps to the nearest measure.
+- Use the player bar buttons `Playback history`, `Shuffle`, `Previous`, `Next`, `Repeat`, `Download`, `Mute`, and the `Position` and `Volume` sliders. `Playback history` lists recent plays. Right-click one and choose `Add Next` or `Add to Queue` to put that play back in the queue. Listening history does the same from a row's menu. With BPM detection on, `Measure starts` on the seek bar jumps to the nearest measure, and the tempo is written to the right of those marks.
 - Click the speed button (it reads `1×` until you change it) and drag `Playback speed` or `Pitch in semitones`. The sound follows the slider while it moves, without a gap. Hold Ctrl while dragging `Playback speed` to move it by the Ctrl-drag factor. Dragging `Playback speed` past either end keeps that rate, down to `0.01×` or up to `4×`. `0`, `+1` through `+12` and `−1` through `−12` set the pitch to that semitone. `Normal` puts both back. `End` and `Home` on a focused slider reach its ends, `0.05×` and `1.8×`. Music and podcasts keep separate values.
 - In a narrow window, hover `Mute` to reveal the vertical `Volume` slider;
   move onto the slider and drag it to adjust playback without losing the panel.

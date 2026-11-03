@@ -13,6 +13,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/elianiva/meiro/internal/offline"
+	"github.com/elianiva/meiro/internal/settings"
 	"github.com/elianiva/meiro/m3"
 	"github.com/elianiva/meiro/youtube"
 )
@@ -43,6 +44,18 @@ type downloads struct {
 type pendingSong struct {
 	item   youtube.MusicItem
 	single bool
+}
+
+// downloadFolder is where songs are saved: the folder the listener chose,
+// or Downloads inside the app's own folder.
+func (a *app) downloadFolder() string {
+	if a.settings.DownloadDir != "" {
+		return a.settings.DownloadDir
+	}
+	if a.dataDir == "" {
+		return ""
+	}
+	return filepath.Join(a.dataDir, "Downloads")
 }
 
 // openDownloads reads what was downloaded into dir.
@@ -153,12 +166,13 @@ func (a *app) nextDownload() {
 	d.active = d.queue[0]
 	d.queue = slices.Delete(d.queue, 0, 1)
 	item, dir, streams := d.active.item, d.dir, a.streams
+	format := settings.NormalizeDownloadFormat(a.settings.DownloadFormat)
 	startTask(a, &d.job, downloadTimeout, func(ctx context.Context) (string, error) {
 		url, _, err := streams.Get(ctx, item.VideoID)
 		if err != nil {
 			return "", err
 		}
-		file, err := offline.Download(ctx, dir, item.VideoID, url)
+		file, err := offline.Download(ctx, dir, url, format, item)
 		if err != nil {
 			// A URL kept from earlier may have expired: the next try
 			// resolves the track again.

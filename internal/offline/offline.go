@@ -9,12 +9,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/elianiva/meiro/internal/audio"
 	"github.com/elianiva/meiro/internal/fsutil"
@@ -227,9 +230,12 @@ func (l *Library) Tracks(c Collection) []youtube.MusicItem {
 	return items
 }
 
-// Download saves the audio at streamURL as the file of a track in the
-// downloads folder dir, and returns the file's name.
-func Download(ctx context.Context, dir, videoID, streamURL string) (string, error) {
+// Download saves the audio at streamURL into dir under the name
+// "Artist - Song", in format. format is mp3, m4a, opus, flac, or original,
+// which keeps the file YouTube sent. An MP3, and the other encoded formats,
+// are tagged with the artist, the title and the album. It returns the file's
+// name.
+func Download(ctx context.Context, dir, streamURL, format string, item youtube.MusicItem) (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
@@ -238,12 +244,198 @@ func Download(ctx context.Context, dir, videoID, streamURL string) (string, erro
 		return "", err
 	}
 	defer fsutil.RemoveAll(filepath.Dir(temp))
-	sum := sha256.Sum256([]byte(videoID))
-	name := hex.EncodeToString(sum[:]) + filepath.Ext(temp)
-	if err := os.Rename(temp, filepath.Join(dir, name)); err != nil {
+	return install(ctx, dir, temp, format, item)
+}
+
+// install moves source into dir, encoding it when format asks, and returns
+// the file's name. A name already in the folder gains " (2)", then " (3)".
+func install(ctx context.Context, dir, source, format string, item youtube.MusicItem) (string, error) {
+	name, err := uniqueName(dir, SongFileName(item, fileExt(format, source)))
+	if err != nil {
+		return "", err
+	}
+	dest := filepath.Join(dir, name)
+	if format == "" || format == "original" {
+		if err := os.Rename(source, dest); err != nil {
+			return "", err
+		}
+		return name, nil
+	}
+	part := strings.TrimSuffix(dest, filepath.Ext(dest)) + ".part" + filepath.Ext(dest)
+	if err := encode(ctx, source, part, format, item); err != nil {
+		_ = os.Remove(part)
+		return "", err
+	}
+	if err := os.Rename(part, dest); err != nil {
+		_ = os.Remove(part)
 		return "", err
 	}
 	return name, nil
+}
+
+// SongFileName is "Artist - Song.ext", or "Song.ext" when the song names no
+// artist. Characters a file name cannot hold are left out.
+func SongFileName(item youtube.MusicItem, ext string) string {
+	title := strings.TrimSpace(item.Title)
+	if title == "" {
+		title = "Unknown track"
+	}
+	artist := strings.TrimSpace(item.Artists)
+	if artist == "" {
+		artist = strings.TrimSpace(item.Artist)
+	}
+	base := title
+	if artist != "" {
+		base = artist + " - " + title
+	}
+	base = sanitizeFileName(base)
+	if base == "" {
+		base = "Unknown track"
+	}
+	ext = strings.TrimPrefix(strings.TrimSpace(ext), ".")
+	if ext == "" {
+		ext = "audio"
+	}
+	return base + "." + ext
+}
+
+func fileExt(format, source string) string {
+	switch format {
+	case "mp3", "m4a", "opus", "flac":
+		return format
+	default:
+		ext := strings.TrimPrefix(filepath.Ext(source), ".")
+		if ext == "" {
+			return "audio"
+		}
+		return ext
+	}
+}
+
+func sanitizeFileName(name string) string {
+	name = strings.Map(func(r rune) rune {
+		if r < 0x20 || strings.ContainsRune(`<>:"/\|?*`, r) {
+			return ' '
+		}
+		return r
+	}, name)
+	name = strings.Join(strings.Fields(name), " ")
+	name = strings.TrimRight(name, ". ")
+	if utf8.RuneCountInString(name) > 120 {
+		name = strings.TrimRight(string([]rune(name)[:120]), ". ")
+	}
+	if windowsReserved(name) {
+		name = "_" + name
+	}
+	return name
+}
+
+func windowsReserved(name string) bool {
+	upper := strings.ToUpper(name)
+	switch upper {
+	case "CON", "PRN", "AUX", "NUL":
+		return true
+	}
+	if len(upper) == 4 && (strings.HasPrefix(upper, "COM") || strings.HasPrefix(upper, "LPT")) {
+		return upper[3] >= '1' && upper[3] <= '9'
+	}
+	return false
+}
+
+func uniqueName(dir, name string) (string, error) {
+	ext := filepath.Ext(name)
+	stem := strings.TrimSuffix(name, ext)
+	candidate := name
+	for n := 2; n < 1000; n++ {
+		_, err := os.Stat(filepath.Join(dir, candidate))
+		if errors.Is(err, os.ErrNotExist) {
+			return candidate, nil
+		}
+		if err != nil {
+			return "", err
+		}
+		candidate = stem + " (" + fmt.Sprint(n) + ")" + ext
+	}
+	return "", errors.New("could not find a free file name")
+}
+
+// encode writes source as format at dest and tags it with the song's artist,
+// title and album.
+func encode(ctx context.Context, source, dest, format string, item youtube.MusicItem) error {
+	ffmpeg, err := proc.Tool("ffmpeg")
+	if err != nil {
+		return err
+	}
+	args := []string{"-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-i", source, "-map_metadata", "-1", "-vn"}
+	switch format {
+	case "mp3":
+		args = append(args, "-codec:a", "libmp3lame", "-q:a", "0", "-id3v2_version", "3")
+	case "m4a":
+		args = append(args, "-codec:a", "aac", "-b:a", "256k")
+	case "opus":
+		args = append(args, "-codec:a", "libopus", "-b:a", "192k")
+	case "flac":
+		args = append(args, "-codec:a", "flac")
+	default:
+		return errors.New("unknown download format")
+	}
+	args = append(args, tagArgs(item)...)
+	args = append(args, dest)
+	out, err := proc.Command(ctx, ffmpeg, args...).CombinedOutput()
+	if err != nil {
+		reason := lastLine(out)
+		if reason == "" {
+			return errors.New("could not save the audio")
+		}
+		return errors.New("could not save the audio: " + reason)
+	}
+	return nil
+}
+
+func tagArgs(item youtube.MusicItem) []string {
+	title := strings.TrimSpace(item.Title)
+	if title == "" {
+		title = "Unknown track"
+	}
+	artist := strings.TrimSpace(item.Artists)
+	if artist == "" {
+		artist = strings.TrimSpace(item.Artist)
+	}
+	var args []string
+	add := func(key, value string) {
+		value = cleanTag(value)
+		if value == "" {
+			return
+		}
+		args = append(args, "-metadata", key+"="+value)
+	}
+	add("title", title)
+	add("artist", artist)
+	add("album", item.Album)
+	return args
+}
+
+func cleanTag(value string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\r' || unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, strings.TrimSpace(value))
+}
+
+func lastLine(out []byte) string {
+	lines := strings.FieldsFunc(string(out), func(r rune) bool { return r == '\n' || r == '\r' })
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line != "" {
+			if len(line) > 200 {
+				line = line[:200]
+			}
+			return line
+		}
+	}
+	return ""
 }
 
 // Writer writes the index off the main thread, one write at a time, so two

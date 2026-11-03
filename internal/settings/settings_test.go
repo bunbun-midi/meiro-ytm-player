@@ -48,7 +48,7 @@ func TestWriterKeepsTheLastStateAndLoadRepairsIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, want := Load(path), Defaults()
-	if got.Volume != want.Volume || got.Seed != want.Seed || got.CacheSongs != want.CacheSongs || got.TrayMark != want.TrayMark || !got.AutoPlay {
+	if got.Volume != want.Volume || got.Seed != want.Seed || got.CacheSongs != want.CacheSongs || got.TrayMark != want.TrayMark || !got.AutoPlay || got.DownloadFormat != DownloadMP3 {
 		t.Errorf("repaired %+v", got)
 	}
 	if err := os.WriteFile(path, []byte(`{"trayMark":"unexpected"}`), 0o600); err != nil {
@@ -56,6 +56,18 @@ func TestWriterKeepsTheLastStateAndLoadRepairsIt(t *testing.T) {
 	}
 	if got := Load(path).TrayMark; got != want.TrayMark {
 		t.Errorf("invalid tray mark = %q, want default %q", got, want.TrayMark)
+	}
+}
+
+func TestDownloadFormatDefaultsToMP3(t *testing.T) {
+	if got := NormalizeDownloadFormat(""); got != DownloadMP3 {
+		t.Fatalf("empty format = %q", got)
+	}
+	if got := NormalizeDownloadFormat("wav"); got != DownloadMP3 {
+		t.Fatalf("unknown format = %q", got)
+	}
+	if got := NormalizeDownloadFormat(DownloadFLAC); got != DownloadFLAC {
+		t.Fatalf("flac = %q", got)
 	}
 }
 

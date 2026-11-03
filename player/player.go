@@ -76,6 +76,9 @@ type Player struct {
 	// eqBands holds one gain in dB per EQFrequencies entry, nil when the
 	// equaliser is off. Guarded by ctl while sessions publish updated targets.
 	eqBands []float64
+	// bassOn and bassDB are the dynamic bass boost. Guarded by ctl.
+	bassOn bool
+	bassDB float64
 	// speed is how fast streams play, 1 for their own pace, and pitch is
 	// how far their key sits from the recording, in semitones. stretch is
 	// which time-stretch the speed uses. Written under mu. The audio thread
@@ -193,12 +196,12 @@ func (p *Player) PreloadContext(ctx context.Context, tag, url string) error {
 	// pitch are applied as the audio plays, so the decode is the recording's
 	// own pace either way.
 	p.ctl.Lock()
-	eq := p.eqBands
+	eq, bassOn, bassDB := p.eqBands, p.bassOn, p.bassDB
 	p.ctl.Unlock()
 	p.mu.Lock()
 	speed, pitch, stretch := p.speed, p.pitch, p.stretch
 	p.mu.Unlock()
-	next, err := p.decode(ffmpeg, url, 0, eq, speed, pitch, stretch)
+	next, err := p.decode(ffmpeg, url, 0, eq, bassOn, bassDB, speed, pitch, stretch)
 	if err != nil {
 		return err
 	}
@@ -209,6 +212,7 @@ func (p *Player) PreloadContext(ctx context.Context, tag, url string) error {
 	// speed or pitch moved since still belongs to this stream.
 	p.ctl.Lock()
 	next.eq.Set(p.eqBands)
+	next.bass.Set(p.bassOn, p.bassDB)
 	next.fade.setHold(p.crossfade)
 	p.mu.Lock()
 	if p.session == nil {
@@ -367,6 +371,27 @@ func (p *Player) SetEQ(gains []float64) {
 	}
 	if p.next != nil {
 		p.next.eq.Set(p.eqBands)
+	}
+	p.mu.Unlock()
+}
+
+// SetBass sets the dynamic bass boost. db is how many dB it may add, from
+// 0 to MaxBassBoost. Off leaves the stream as it is. A change reaches the
+// stream playing and the one preloaded without restarting either.
+func (p *Player) SetBass(on bool, db float64) {
+	if math.IsNaN(db) {
+		return
+	}
+	db = min(max(db, 0), MaxBassBoost)
+	p.ctl.Lock()
+	defer p.ctl.Unlock()
+	p.bassOn, p.bassDB = on, db
+	p.mu.Lock()
+	if p.session != nil && p.session.bass != nil {
+		p.session.bass.Set(on, db)
+	}
+	if p.next != nil && p.next.bass != nil {
+		p.next.bass.Set(on, db)
 	}
 	p.mu.Unlock()
 }
@@ -704,7 +729,7 @@ func (p *Player) start(ctx context.Context, url string, at time.Duration, paused
 	p.mu.Lock()
 	speed, pitch, stretch := p.speed, p.pitch, p.stretch
 	p.mu.Unlock()
-	s, err := p.decode(ffmpeg, url, at, p.eqBands, speed, pitch, stretch)
+	s, err := p.decode(ffmpeg, url, at, p.eqBands, p.bassOn, p.bassDB, speed, pitch, stretch)
 	if err != nil {
 		return err
 	}
@@ -728,7 +753,7 @@ func (p *Player) start(ctx context.Context, url string, at time.Duration, paused
 // session's reader stretches and shifts the PCM as it reaches the output.
 // The session has no output yet: start gives it one, and a handoff takes over
 // the one before it.
-func (p *Player) decode(ffmpeg, url string, at time.Duration, eq []float64, speed, pitch float64, stretch Stretch) (*session, error) {
+func (p *Player) decode(ffmpeg, url string, at time.Duration, eq []float64, bassOn bool, bassDB, speed, pitch float64, stretch Stretch) (*session, error) {
 	cmd := exec.Command(ffmpeg, streamArgs(url, at, p.rangedHTTP)...) //nolint:noctx // the player ends ffmpeg itself when the stream is replaced or stopped
 	hideWindow(cmd)
 	pipe, writer, err := os.Pipe()
@@ -747,10 +772,11 @@ func (p *Player) decode(ffmpeg, url string, at time.Duration, eq []float64, spee
 	s := &session{
 		url: url, cmd: cmd, pipe: pipe, stderr: stderr,
 		offset: at, done: make(chan struct{}), quit: make(chan struct{}), eq: newEqualizer(eq),
+		bass: newBassBoost(bassOn, bassDB),
 	}
 	s.rate = newRateReader(pipe, newRateControl(speed, pitch))
 	s.rate.set(speed, pitch, stretch)
-	s.fade = newFadeReader(newEQReader(s.rate, s.eq), func() *session { return p.upcoming(s) })
+	s.fade = newFadeReader(newEQReader(newBassReader(s.rate, s.bass), s.eq), func() *session { return p.upcoming(s) })
 	s.source = newCountingReader(s.fade, func() io.Reader { return p.handoff(s) })
 	go p.reap(s)
 	return s, nil
@@ -1084,6 +1110,7 @@ type session struct {
 	stderr *boundedBuffer
 	source *countingReader
 	eq     *equalizer
+	bass   *bassBoost
 	fade   *fadeReader
 	out    output
 	done   chan struct{}

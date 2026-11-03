@@ -107,6 +107,10 @@ type Settings struct {
 	Shortcuts map[string]string `json:"shortcuts,omitempty"`
 	// EQOn enables the equaliser's bands.
 	EQOn bool `json:"eqOn"`
+	// BassBoostOn raises the loudest low notes, and BassDB is how many dB
+	// that raise may reach. 0 is none.
+	BassBoostOn bool    `json:"bassBoost,omitempty"`
+	BassDB      float64 `json:"bassBoostDB"`
 	// EQBands holds each band's gain in dB, low to high, one per the player's
 	// equaliser frequencies.
 	EQBands []float64 `json:"eqBands,omitempty"`
@@ -136,6 +140,12 @@ type Settings struct {
 	// BPMDetection finds a track's tempo and marks its measures. Off until
 	// the listener turns it on.
 	BPMDetection bool `json:"bpmDetection,omitempty"`
+	// DownloadDir is where saved songs go. Empty keeps them in the app's
+	// own Downloads folder.
+	DownloadDir string `json:"downloadDir,omitempty"`
+	// DownloadFormat is the audio a download is saved as: mp3, m4a, opus,
+	// flac, or original. Empty means MP3.
+	DownloadFormat string `json:"downloadFormat,omitempty"`
 	// MeasureSnap makes the measure-jump buttons land on the measure grid.
 	// Off, they add the measure's time to the current position.
 	MeasureSnap bool `json:"measureSnap,omitempty"`
@@ -156,7 +166,7 @@ func Defaults() Settings {
 	return Settings{
 		Seed: "#6750a4", Mode: "system", Volume: 70, AutoPlay: true, CacheSongs: audio.DefaultLimit, NotifyTrack: runtime.GOOS != "darwin", ShowTray: runtime.GOOS != "darwin", TrayMark: TrayMarkWordmark,
 		Zoom: DefaultZoom, ShowNotch: true, CrossfadeSeconds: DefaultCrossfade,
-		SpeedFine: DefaultSpeedFine,
+		SpeedFine: DefaultSpeedFine, BassDB: 6, DownloadFormat: DownloadMP3,
 	}
 }
 
@@ -386,7 +396,44 @@ func Parse(data []byte) (Settings, error) {
 		read.TimeStretch = ""
 	}
 	read.SpeedFine = ClampSpeedFine(read.SpeedFine)
+	read.BassDB = ClampBassBoost(read.BassDB)
+	read.DownloadFormat = NormalizeDownloadFormat(read.DownloadFormat)
 	return read, nil
+}
+
+// The audio a download can be saved as. DownloadMP3 is the one a new
+// settings file uses.
+const (
+	DownloadMP3      = "mp3"
+	DownloadM4A      = "m4a"
+	DownloadOpus     = "opus"
+	DownloadFLAC     = "flac"
+	DownloadOriginal = "original"
+)
+
+// NormalizeDownloadFormat returns format when it is one Meiro can write,
+// and MP3 otherwise.
+func NormalizeDownloadFormat(format string) string {
+	switch format {
+	case DownloadM4A, DownloadOpus, DownloadFLAC, DownloadOriginal:
+		return format
+	default:
+		return DownloadMP3
+	}
+}
+
+// MaxBassBoost is the loudest the dynamic bass boost setting goes, in dB.
+const MaxBassBoost = 15
+
+// ClampBassBoost keeps a bass-boost amount inside 0 to MaxBassBoost.
+func ClampBassBoost(db float64) float64 {
+	if db != db || db < 0 {
+		return 0
+	}
+	if db > MaxBassBoost {
+		return MaxBassBoost
+	}
+	return db
 }
 
 // save writes the settings atomically.

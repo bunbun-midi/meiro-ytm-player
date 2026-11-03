@@ -15,7 +15,13 @@ go_library(
 
 go_test(
     name = "offline_test",
-    srcs = ["offline_test.go"],
+    srcs = [
+        "name_test.go",
+        "offline_test.go",
+    ],
     embed = [":offline"],
-    deps = ["//youtube"],
+    deps = [
+        "//internal/proc",
+        "//youtube",
+    ],
 )

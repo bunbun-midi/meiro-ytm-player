@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -11,9 +13,10 @@ import (
 	"github.com/elianiva/meiro/internal/proc"
 )
 
-// beatState is the tempo of the track it was read from. done is set once
-// the read finished, including when the audio had no steady beat, so a
-// track is not analysed again until it changes or the listener asks again.
+// beatState is the tempo of the track it was read from. done is set when a
+// tempo was found, or when the audio was heard and had no steady beat. A
+// read that failed before any audio arrived leaves done clear, so the next
+// time the track starts it is tried again.
 type beatState struct {
 	id   string
 	grid bpm.Grid
@@ -22,11 +25,12 @@ type beatState struct {
 }
 
 // How much of a track is read to find its tempo, from the start, so the
-// phase lines up with the beginning of the audio.
+// phase lines up with the beginning of the audio. A minute covers an intro
+// and a steady stretch after it.
 const (
-	tempoSeconds = 48
+	tempoSeconds = 90
 	tempoRate    = 22050
-	tempoTimeout = 45 * time.Second
+	tempoTimeout = 2 * time.Minute
 )
 
 // setBPMDetection turns tempo analysis on or off and reads the track that
@@ -56,12 +60,18 @@ func (a *app) detectTempo(id, rawURL string) {
 		if a.current.VideoID != id {
 			return
 		}
-		a.beats = beatState{id: id, done: true}
+		// A read that never got any audio can be tried again. A track that
+		// was heard and has no beat stays without one until detection is
+		// turned off and on.
 		if err != nil {
+			if errors.Is(err, errNoBeat) {
+				log.Printf("tempo: video_id=%s: no steady beat", id)
+				a.beats = beatState{id: id, done: true}
+			}
 			return
 		}
-		a.beats.grid = grid
-		a.beats.ok = true
+		log.Printf("tempo: video_id=%s bpm=%.1f", id, grid.BPM)
+		a.beats = beatState{id: id, grid: grid, ok: true, done: true}
 	})
 }
 
@@ -94,11 +104,11 @@ func readTempo(ctx context.Context, rawURL string) (bpm.Grid, error) {
 	if err != nil {
 		return bpm.Grid{}, err
 	}
-	out, err := proc.Command(ctx, ffmpeg, tempoArgs(rawURL)...).Output()
-	if err != nil {
-		return bpm.Grid{}, err
-	}
-	if len(out) < tempoRate {
+	out, readErr := readTempoPCM(ctx, ffmpeg, rawURL)
+	if len(out) < tempoRate*2*8 {
+		if readErr != nil {
+			return bpm.Grid{}, readErr
+		}
 		return bpm.Grid{}, errNoBeat
 	}
 	pcm := make([]int16, len(out)/2)
@@ -112,6 +122,28 @@ func readTempo(ctx context.Context, rawURL string) (bpm.Grid, error) {
 	return grid, nil
 }
 
+// readTempoPCM decodes the opening of the track twice if the first read
+// comes back short. Whatever audio did arrive is kept: a stream that dies
+// after half a minute still has a tempo in it.
+func readTempoPCM(ctx context.Context, ffmpeg, rawURL string) ([]byte, error) {
+	var best []byte
+	var last error
+	for attempt := 0; attempt < 2; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return best, err
+		}
+		buf, err := proc.Command(ctx, ffmpeg, tempoArgs(rawURL)...).Output()
+		if len(buf) > len(best) {
+			best = buf
+		}
+		last = err
+		if err == nil && len(buf) >= tempoRate*2*8 {
+			return buf, nil
+		}
+	}
+	return best, last
+}
+
 // errNoBeat is a tempo that could not be read. The audio address is left
 // out of it, because that address can carry a signature.
 var errNoBeat = errors.New("tempo: no steady beat")
@@ -121,11 +153,13 @@ func tempoArgs(rawURL string) []string {
 	if strings.HasPrefix(rawURL, "http://") || strings.HasPrefix(rawURL, "https://") {
 		args = append(args,
 			"-protocol_whitelist", "http,https,httpproxy,tcp,tls,crypto",
+			"-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "2",
+			"-rw_timeout", strconv.FormatInt((20*time.Second).Microseconds(), 10),
 			"-user_agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
 		)
 	}
 	args = append(args,
-		"-t", "48",
+		"-t", strconv.Itoa(tempoSeconds),
 		"-i", rawURL,
 		"-vn", "-ac", "1", "-ar", "22050",
 		"-f", "s16le", "pipe:1",

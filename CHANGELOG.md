@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **See the tempo beside the measure marks.** The seek bar shows the track's BPM and the BPM at the current speed.
+- **Download the song that's playing.** A button beside Repeat saves it. Settings → Sound → Download folder, under BPM detection, chooses where those songs go, including ones saved from a song's menu. Each file is named Artist - Song. The format is MP3 unless another is chosen there, and an MP3 is tagged with the artist, the title and the album.
+- **Queue a play from listening history.** Right-click a play on the history page and choose Add Next or Add to Queue.
+- **Dynamic bass boost.** Settings → Sound, above the equaliser, raises the loudest low notes by up to 15 dB and leaves the rest of the song where it is.
 - **Make playback shortcuts global.** A switch beside Play or pause, Previous, Next, Volume up, Volume down and Mute in Settings → Keyboard keeps that shortcut working while another app is focused.
 - **Jump by the beat.** Settings → Sound → BPM detection finds a track's tempo and marks the start of each measure on the seek bar. The playback control jumps forward or back by a measure, a half, a quarter, an eighth, or by 2, 4 or 8 measures. A switch beside those jumps lands on the measure grid.
 - **Open playback history from the player.** The history button beside Shuffle lists recent plays. Add Next and Add to Queue put one back in the queue.
@@ -24,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **BPM detection keeps one tempo for the whole track.** The measure marks follow the steadiest part of the song, stay on the beat later in the track, and no longer flip between half time and double time.
 - **Track notifications show the album cover.** The picture beside the song name is the cover of the track that just started.
 - **Moving across album covers keeps the cursor smooth.** The pointer can travel over a cover, a title and a song row without the window rebuilding on the way, and a cover is left as it was while the play button appears. A right click still opens the cover's menu.
 - **Semitone buttons show +10, +11, +12 and −10, −11, −12 in full.**

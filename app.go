@@ -173,11 +173,15 @@ type app struct {
 	historyTo         string
 	historyPageIndex  int
 	historyView       historyMemo
+	historyMenu       itemMenu
 	statsRange        int // days the stats page covers: 7, 14 or 30
 	stats             statsMemo
 
 	// downloads is the music saved to play offline.
 	downloads downloads
+	// dataDir is the app's own folder, the home of downloads when the
+	// listener has not chosen another.
+	dataDir string
 
 	// audioCache is the cache playback uses now; the settings page swaps it
 	// from the main thread while background work holds on to the one it

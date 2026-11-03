@@ -28,6 +28,9 @@ type playback struct {
 	total     time.Duration
 	scrub     float64
 	scrubbing bool
+	// scrubMark is set when a click landed on a measure mark, so the slider
+	// under the marks does not seek to the raw click on the way back up.
+	scrubMark bool
 	// seekTarget is the position the user last asked for, which seeking moves
 	// the player to off the main thread.
 	seekTarget  time.Duration

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"strconv"
 	"time"
 
@@ -79,6 +80,19 @@ func (a *app) transport(c *ui.Context, size float32, gap float32) {
 				a.cycleRepeat()
 			}
 		}, keymap.Repeat)
+		spec = small
+		item := a.current
+		done := item.VideoID != "" && a.isDownloaded(item.VideoID)
+		icon, label = m3.IconDownload, "Download"
+		if done {
+			icon, label = m3.IconDownloadDone, "Downloaded"
+		}
+		spec.Icon, spec.Label, spec.Key = icon, label, "download-track"
+		spec.Disabled = done || !a.canDownload(item)
+		spec.Loading = !done && a.downloading(item.VideoID)
+		if m3.IconButton(c, spec).Clicked() {
+			a.downloadSong(item)
+		}
 	})
 }
 
@@ -97,8 +111,12 @@ func (a *app) scrubber(c *ui.Context) {
 		m3.Text(c, m3.LabelMedium, clock(time.Duration(a.scrub*float64(time.Second)))).
 			MinWidth(40).NoWrap().TextAlign(ui.End).Shrink(0).TextColor(sc.OnSurfaceVariant).FontFeatures("tnum")
 		ui.Column(c.Key("scrub-track")).Grow(1).MinWidth(40).Gap(0).AlignItems(ui.Stretch).Children(func() {
+			// The slider's hit target reaches the marks above it, so a click
+			// on a mark is also a slider change. The mark wins: it seeks to
+			// the measure, and the slider does not seek again on that click.
+			var onMark bool
 			if grid, ok := a.currentGrid(); ok && known {
-				a.measureTicks(c, grid)
+				onMark = a.measureTickMarks(c, grid, grid.Measures(a.total), sc)
 			}
 			slider := m3.Slider(c, &a.scrub, 0, total, m3.SliderSpec{
 				Label: "Position", Key: "scrubber", Wavy: true, Waving: a.player.Playing(), Disabled: !known,
@@ -106,6 +124,18 @@ func (a *app) scrubber(c *ui.Context) {
 			// The slider grows inside a row. In this column that would
 			// stretch it vertically, so the track keeps its own height.
 			slider.Grow(0)
+			if onMark {
+				a.scrubMark = true
+				a.scrub = a.seekTarget.Seconds()
+				return
+			}
+			if a.scrubMark {
+				a.scrub = a.seekTarget.Seconds()
+				if !slider.Pressed() {
+					a.scrubMark = false
+				}
+				return
+			}
 			if slider.Pressed() {
 				a.scrubbing = true
 			}
@@ -117,16 +147,34 @@ func (a *app) scrubber(c *ui.Context) {
 				a.seek(time.Duration(a.scrub * float64(time.Second)))
 			}
 		})
+		if grid, ok := a.currentGrid(); ok && known {
+			speed := a.player.Speed()
+			if speed <= 0 || math.IsNaN(speed) {
+				speed = 1
+			}
+			text := formatBPM(grid.BPM) + " · " + formatBPM(grid.BPM*speed) + " BPM"
+			m3.Text(c, m3.LabelMedium, text).Shrink(0).NoWrap().TextColor(sc.OnSurfaceVariant).
+				Tooltip("The track's tempo, and that tempo at the current speed.")
+		}
 		m3.Text(c, m3.LabelMedium, clock(a.total)).MinWidth(40).NoWrap().Shrink(0).TextColor(sc.OnSurfaceVariant).FontFeatures("tnum")
 	})
 }
 
-// measureTicks paints the start of each measure above the scrubber. A click
-// seeks to the nearest one.
-func (a *app) measureTicks(c *ui.Context, grid bpm.Grid) {
-	sc := m3.Of(c).Scheme
-	marks := grid.Measures(a.total)
-	bar := ui.ButtonBase(c.Key("measure-ticks")).Height(10).Label("Measure starts").Cursor(ui.CursorPointer)
+// formatBPM prints a tempo. A whole number stays whole.
+func formatBPM(v float64) string {
+	if math.Abs(v-math.Round(v)) < 0.05 {
+		return strconv.FormatFloat(math.Round(v), 'f', 0, 64)
+	}
+	return strconv.FormatFloat(v, 'f', 1, 64)
+}
+
+// measureTickMarks paints the start of each measure above the scrubber. A
+// click seeks to the nearest one. The tempo is drawn beside this strip.
+// It reports whether that click happened.
+func (a *app) measureTickMarks(c *ui.Context, grid bpm.Grid, marks []time.Duration, sc m3.Scheme) bool {
+	// Taller than the slider's hit slop, so a click on a mark reaches the
+	// marks and not the slider underneath.
+	bar := ui.ButtonBase(c.Key("measure-ticks")).Height(20).Label("Measure starts").Cursor(ui.CursorPointer)
 	bar.Background(ui.Transparent)
 	bar.Draw(func(p *ui.Painter, r ui.Rect) {
 		if a.total <= 0 || r.W <= 0 {
@@ -137,16 +185,18 @@ func (a *app) measureTicks(c *ui.Context, grid bpm.Grid) {
 			p.Fill(ui.Rect{X: x - 0.75, Y: r.Y, W: 1.5, H: r.H}, sc.Primary, 1)
 		}
 	})
-	if bar.Clicked() {
-		x, _, _ := bar.PointerPosition()
-		if w := bar.Bounds().W; w > 0 {
-			at := time.Duration(float64(x/w) * float64(a.total))
-			if target, ok := grid.Nearest(at, a.total); ok {
-				a.scrub = target.Seconds()
-				a.seek(target)
-			}
+	if !bar.Clicked() {
+		return false
+	}
+	x, _, _ := bar.PointerPosition()
+	if w := bar.Bounds().W; w > 0 {
+		at := time.Duration(float64(x/w) * float64(a.total))
+		if target, ok := grid.Nearest(at, a.total); ok {
+			a.scrub = target.Seconds()
+			a.seek(target)
 		}
 	}
+	return true
 }
 
 // volumeIcon is the speaker shape for the current volume.

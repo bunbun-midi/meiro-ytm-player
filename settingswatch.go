@@ -219,6 +219,12 @@ func (a *app) applyReloadedSettings(previous settings.Settings) {
 	if s.EQOn != previous.EQOn || !slices.Equal(s.EQBands, previous.EQBands) {
 		a.loadEQ()
 	}
+	if s.BassBoostOn != previous.BassBoostOn || s.BassDB != previous.BassDB {
+		a.applyBass()
+	}
+	if s.DownloadDir != previous.DownloadDir {
+		a.openDownloads(a.downloadFolder())
+	}
 	if s.Crossfade != previous.Crossfade || s.CrossfadeSeconds != previous.CrossfadeSeconds {
 		a.applyCrossfade()
 	}

@@ -146,12 +146,18 @@ func (a *app) historyRows(c *ui.Context, result history.Page) {
 	sc := m3.Of(c).Scheme
 	ui.Column(c).Gap(4).Children(func() {
 		for i, entry := range result.Entries {
-			ui.Row(c.Key(fmt.Sprintf("hist-%d-%d", result.Page, i))).Gap(12).AlignItems(ui.Center).Padding(8, 4).Children(func() {
+			name := entry.Title
+			if name == "" {
+				name = "Unknown track"
+			}
+			key := fmt.Sprintf("hist-%d-%d", result.Page, i)
+			row := ui.ButtonBase(c.Key(key)).Padding(8, 4).Radius(m3.Medium).
+				Cursor(ui.CursorPointer).Label(name).AlignItems(ui.Center)
+			row.Background(m3.StateFill(ui.Transparent, sc.OnSurface, row.Hovered(), row.Pressed(), row.FocusVisible()))
+			var anchor ui.Element
+			var has bool
+			row.Children(func() {
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-					name := entry.Title
-					if name == "" {
-						name = "Unknown track"
-					}
 					m3.EmphasizedText(c, m3.BodyLarge, name).SingleLine()
 					if entry.Artist != "" {
 						m3.Text(c, m3.BodySmall, entry.Artist).SingleLine().TextColor(sc.OnSurfaceVariant)
@@ -159,7 +165,34 @@ func (a *app) historyRows(c *ui.Context, result history.Page) {
 				})
 				m3.Text(c, m3.BodySmall, entry.PlayedAt.Local().Format("Jan 2, 2006 3:04 PM")).
 					Shrink(0).TextColor(sc.OnSurfaceVariant)
+				anchor, has = a.historyMenu.pointerAnchor(c, key)
 			})
+			pointer := row.RightClicked()
+			if pointer || row.Shortcut(ui.Shift, ui.KeyF10) {
+				x, y, _ := row.PointerPosition()
+				a.historyMenu.show(key, pointer, x, y)
+			}
+			if a.historyMenu.owns(key) {
+				a.historyListMenu(c, a.historyMenu.anchor(row, anchor, has), key, entry)
+			}
+		}
+	})
+}
+
+// historyListMenu queues a play from the listening history.
+func (a *app) historyListMenu(c *ui.Context, anchor ui.Element, key string, entry history.Entry) {
+	if !a.historyMenu.owns(key) {
+		return
+	}
+	item := historyTrack(entry)
+	m3.Menu(c, anchor, &a.historyMenu.open, 200, func() {
+		if m3.MenuItem(c, "Add Next", m3.IconNext).Clicked() {
+			a.enqueue(item, true)
+			a.historyMenu.close()
+		}
+		if m3.MenuItem(c, "Add to Queue", m3.IconQueue).Clicked() {
+			a.enqueue(item, false)
+			a.historyMenu.close()
 		}
 	})
 }

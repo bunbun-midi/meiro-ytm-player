@@ -44,6 +44,10 @@ func (e *equalizer) Set(gains []float64) {
 			config.bands[i] = peakingEQ(EQFrequencies[i], gain)
 			boost = max(boost, gain)
 		}
+		// The biggest boost is taken back off the whole signal, so that
+		// boost cannot clip. Raising the bass therefore leaves the highs
+		// quieter by the same amount, and the bass itself ends up near
+		// where it started, only louder than the rest.
 		config.gain = math.Pow(10, -boost/20)
 	}
 	e.target.Store(config)

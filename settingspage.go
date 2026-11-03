@@ -60,7 +60,7 @@ var settingsRows = []settingsRow{
 
 	{key: "h-look", heading: "Appearance and sound"},
 	{key: "appearance", search: "theme appearance system light dark colour color colours colors violet indigo blue sky teal green lime amber orange red rose orchid hue palette tonal spot vibrant expressive neutral monochrome artwork dynamic matugen source", card: (*app).appearanceCard},
-	{key: "sound", search: "sound audio output device speakers headphones normalize loudness logarithmic equaliser volume bungee phase vocoder overlap-add time stretch speed ctrl drag fine bpm tempo beat measure detection", card: (*app).soundCard},
+	{key: "sound", search: "sound audio output device speakers headphones normalize loudness logarithmic equaliser volume bungee phase vocoder overlap-add time stretch speed ctrl drag fine bpm tempo beat measure detection download folder format mp3 m4a opus flac bass boost dynamic", card: (*app).soundCard},
 
 	{key: "h-playback", heading: "Playback"},
 	{key: "playback", search: "auto skip disliked songs thumbs down", card: (*app).playbackCard},
@@ -503,6 +503,33 @@ func (a *app) soundCard(c *ui.Context) {
 			}
 		})
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
+			settingLabel(c, "Download folder", "Songs saved from the player and from a song's menu go here, named Artist - Song.").Grow(1).MinWidth(0)
+			folder := a.downloads.dir
+			if folder == "" {
+				folder = "Choose a folder"
+			}
+			m3.Text(c, m3.BodyMedium, folder).SingleLine().MaxWidth(280).Shrink(1).TextColor(sc.OnSurfaceVariant).Tooltip(folder)
+			if m3.Button(c, m3.ButtonSpec{Label: "Choose folder", Kind: m3.Tonal, Size: m3.Small40, Key: "download-folder"}).Clicked() {
+				a.chooseDownloadDirectory()
+			}
+		})
+		ui.Row(c).Gap(16).AlignItems(ui.Center).Wrap().Children(func() {
+			settingLabel(c, "Download format", "MP3 is the usual choice. An MP3 is tagged with the artist, the title and the album.").Grow(1)
+			formats := []string{settings.DownloadMP3, settings.DownloadM4A, settings.DownloadOpus, settings.DownloadFLAC, settings.DownloadOriginal}
+			labels := []string{"MP3", "M4A", "Opus", "FLAC", "Original"}
+			current := settings.NormalizeDownloadFormat(a.settings.DownloadFormat)
+			picked := 0
+			for i, format := range formats {
+				if format == current {
+					picked = i
+				}
+			}
+			if m3.ButtonGroup(c, "download-format", &picked, labels, nil) {
+				a.settings.DownloadFormat = formats[picked]
+				a.saveSettings()
+			}
+		})
+		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
 			settingLabel(c, "Normalize loudness", "Adjust track gain to keep songs at a more consistent volume. Requires a signed-in YouTube session.").Grow(1)
 			on := a.settings.NormalizeLoudness
 			if m3.Switch(c, &on, "Normalize loudness").Changed() {
@@ -546,6 +573,29 @@ func (a *app) soundCard(c *ui.Context) {
 				m3.EmphasizedText(c, m3.TitleMedium, strconv.FormatFloat(settings.ClampSpeedFine(a.settings.SpeedFine), 'f', 2, 64)+"×").
 					Width(56).Shrink(0).TextAlign(ui.End).TextColor(sc.OnSurface)
 			})
+		})
+		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
+			settingLabel(c, "Dynamic bass boost", "Raise the loudest low notes, up to the amount below, and leave the rest of the song where it is.").Grow(1)
+			on := a.settings.BassBoostOn
+			if m3.Switch(c, &on, "Dynamic bass boost on").Changed() {
+				a.settings.BassBoostOn = on
+				a.applyBass()
+				a.saveSettings()
+			}
+		})
+		ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
+			value := settings.ClampBassBoost(a.settings.BassDB)
+			slider := m3.Slider(c, &value, 0, settings.MaxBassBoost, m3.SliderSpec{
+				Label: "Bass boost", Thickness: 16, Step: 0.5, Key: "bass-boost",
+				Disabled: !a.settings.BassBoostOn,
+			}).Grow(1)
+			if slider.Changed() {
+				a.settings.BassDB = settings.ClampBassBoost(math.Round(value*2) / 2)
+				a.applyBass()
+				a.saveSettings()
+			}
+			m3.EmphasizedText(c, m3.TitleMedium, strconv.FormatFloat(settings.ClampBassBoost(a.settings.BassDB), 'f', 1, 64)+" dB").
+				Width(64).Shrink(0).TextAlign(ui.End).TextColor(sc.OnSurface)
 		})
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
 			settingLabel(c, "Equaliser", "Shape ten bands of the sound as you adjust them, without restarting the stream.").Grow(1)
@@ -749,6 +799,44 @@ func (a *app) accountCard(c *ui.Context) {
 		if s := &a.account.signIn; s.err != "" && !s.open {
 			m3.Text(c, m3.BodyMedium, s.err).TextColor(sc.Error).MaxLines(3)
 		}
+	})
+}
+
+// chooseDownloadDirectory opens the native folder picker and saves songs
+// there from then on. Songs already saved stay in the folder they went to.
+func (a *app) chooseDownloadDirectory() {
+	current := a.downloads.dir
+	if current == "" {
+		current = a.downloadFolder()
+	}
+	parent := a.desktop.window()
+	type chosen struct {
+		path string
+		err  string
+	}
+	spawn(a, func() chosen {
+		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
+			Parent: parent, Title: "Choose download folder", DefaultPath: current,
+			Directory: true, CreateDirectories: true,
+		})
+		if err != nil {
+			return chosen{err: "Could not open the folder picker: " + err.Error()}
+		}
+		if len(paths) == 0 {
+			return chosen{}
+		}
+		return chosen{path: paths[0]}
+	}, func(c chosen) {
+		if c.err != "" {
+			a.notice = c.err
+			return
+		}
+		if c.path == "" {
+			return
+		}
+		a.settings.DownloadDir = c.path
+		a.saveSettings()
+		a.openDownloads(c.path)
 	})
 }
 
