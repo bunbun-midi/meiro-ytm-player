@@ -47,6 +47,24 @@ func (a *app) shortcutsChanged() {
 	a.keyboard.keys = nil
 	a.keyboard.problem = ""
 	a.saveSettings()
+	a.syncGlobalKeys()
+}
+
+// setGlobalKey keeps action working while another app is focused, or stops
+// it doing so. The checkbox stays on in tests, where there is no desktop
+// to register the key with.
+func (a *app) setGlobalKey(action keymap.Action, on bool) {
+	if on {
+		if a.settings.GlobalKeys == nil {
+			a.settings.GlobalKeys = map[string]bool{}
+		}
+		a.settings.GlobalKeys[string(action)] = true
+	} else {
+		a.clearGlobalKey(action)
+	}
+	a.keyboard.problem = ""
+	a.saveSettings()
+	a.syncGlobalKeys()
 }
 
 // setShortcut binds an action to a key.
@@ -215,6 +233,14 @@ func (a *app) keyboardCard(c *ui.Context) {
 		for _, info := range keymap.Actions {
 			ui.Row(c.Key(info.Action)).Gap(16).AlignItems(ui.Center).Children(func() {
 				m3.Text(c, m3.BodyLarge, info.Title).TextColor(sc.OnSurface).Grow(1)
+				if keymap.CanBeGlobal(info.Action) {
+					on := a.settings.GlobalKeys[string(info.Action)]
+					sw := m3.CompactSwitch(c, &on, "Global "+info.Title)
+					sw.Tooltip("Works while another app is focused")
+					if sw.Changed() {
+						a.setGlobalKey(info.Action, on)
+					}
+				}
 				recording := a.keyboard.recording == info.Action
 				label := keys.Labels(info.Action, keymap.OS())
 				kind := m3.Tonal

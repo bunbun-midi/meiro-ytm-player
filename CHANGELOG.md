@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Make playback shortcuts global.** A switch beside Play or pause, Previous, Next, Volume up, Volume down and Mute in Settings → Keyboard keeps that shortcut working while another app is focused.
+- **Jump by the beat.** Settings → Sound → BPM detection finds a track's tempo and marks the start of each measure on the seek bar. The playback control jumps forward or back by a measure, a half, a quarter, an eighth, or by 2, 4 or 8 measures. A switch beside those jumps lands on the measure grid.
+- **Open playback history from the player.** The history button beside Shuffle lists recent plays. Add Next and Add to Queue put one back in the queue.
 - **Choose the output device.** Settings → Sound → Output device picks which speakers or headphones Meiro plays through on Windows. System default follows the device Windows is using.
 - **Ctrl-drag moves the speed slider more slowly.** Settings → Sound → Ctrl-drag sets how far that drag goes compared with a normal one. It starts at a quarter of the normal speed.
 - **Shift a song's pitch without changing its speed.** The playback control sets the pitch from −12 to +12 semitones, in steps of a tenth, and the key follows the slider as it moves. Buttons for 0 and for each semitone from −12 to +12 set the same pitch. Songs and podcasts remember their own pitch.

@@ -66,6 +66,11 @@ type playback struct {
 	// seeking moves the player to seekTarget; it is busy while the decode is
 	// being restarted there.
 	seeking task
+	// playbackURL is the audio of the track playing, so turning BPM detection
+	// on can read it without resolving the track again.
+	playbackURL string
+	beats       beatState
+	beatTask    task
 	// preload resolves the next track and has the player decode it ahead of
 	// the end of the current one; preloaded is what it left with the player,
 	// and preloadFailed the track it could not, which is not tried again
@@ -179,6 +184,9 @@ func (a *app) enterTrack(item youtube.MusicItem, automatic bool) (time.Duration,
 	if changed {
 		a.finishEpisodeProgress(false)
 		a.leaveEpisode()
+		a.beatTask.stop()
+		a.beats = beatState{}
+		a.playbackURL = ""
 	}
 	a.current = item
 	a.total = parseDuration(item.Duration)

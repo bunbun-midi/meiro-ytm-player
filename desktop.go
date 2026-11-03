@@ -12,6 +12,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/elianiva/meiro/internal/keymap"
 	"github.com/elianiva/meiro/internal/settings"
 	"github.com/elianiva/meiro/youtube"
 )
@@ -46,6 +47,9 @@ type desktop struct {
 	trayShown trayState
 	// titleShown is the window title last set, to skip identical updates.
 	titleShown string
+	// actionShortcuts are the accelerators registered for the per-action
+	// global keys, by action ID, so a change can unregister the old one.
+	actionShortcuts map[string]string
 	// trayFailed is set when the system refused the tray, so it is not
 	// asked again until the user turns the tray off and on.
 	trayFailed bool
@@ -217,6 +221,9 @@ func (d *desktop) setShortcut(on bool, toggle func()) bool {
 		return true
 	}
 	if !on {
+		if d.ownsActionShortcut(toggleShortcut) {
+			return true
+		}
 		mygo.GlobalShortcut.Unregister(toggleShortcut)
 		return true
 	}
@@ -480,6 +487,7 @@ func (d *desktop) close() {
 	d.keepAwake(false)
 	dismissTrackToast()
 	mygo.GlobalShortcut.UnregisterAll()
+	d.actionShortcuts = nil
 	if d.notification != nil {
 		d.notification.Close()
 		d.notification = nil
@@ -544,6 +552,7 @@ func (a *app) setupDesktop() {
 	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { a.desktop.quitting = true })
 	a.setupNotch()
 	a.syncDesktop()
+	a.syncGlobalKeys()
 	a.syncShortcut()
 	a.desktop.setOpenAtLogin(a.settings.OpenAtLogin)
 }
@@ -588,12 +597,117 @@ func (d *desktop) setTitle(title string) {
 	d.win.SetTitle(title)
 }
 
+// ownsActionShortcut reports whether a per-action global key registered acc.
+func (d *desktop) ownsActionShortcut(acc string) bool {
+	if d == nil {
+		return false
+	}
+	for _, have := range d.actionShortcuts {
+		if have == acc {
+			return true
+		}
+	}
+	return false
+}
+
 // syncShortcut registers the global shortcut as the settings say, and turns
 // the setting off when the system refuses it.
 func (a *app) syncShortcut() {
+	if a.settings.GlobalShortcut {
+		a.releaseActionShortcut(toggleShortcut)
+	}
 	if !a.desktop.setShortcut(a.settings.GlobalShortcut, func() { a.update(a.togglePlay) }) {
 		a.settings.GlobalShortcut = false
 		a.saveSettings()
+	}
+}
+
+// syncGlobalKeys registers the playback shortcuts the listener marked as
+// global, and unregisters the ones they cleared. A nil desktop, as in tests,
+// leaves the settings as they are. A shortcut the system refuses is turned
+// back off.
+func (a *app) syncGlobalKeys() {
+	if a.desktop == nil {
+		return
+	}
+	if a.desktop.actionShortcuts == nil {
+		a.desktop.actionShortcuts = map[string]string{}
+	}
+	wanted := map[string]string{}
+	keys := a.keyMap()
+	for _, info := range keymap.Actions {
+		if !keymap.CanBeGlobal(info.Action) || !a.settings.GlobalKeys[string(info.Action)] {
+			continue
+		}
+		b, ok := keys.Primary(info.Action)
+		if !ok {
+			continue
+		}
+		if acc := b.Accelerator(); acc != "" {
+			wanted[string(info.Action)] = acc
+		}
+	}
+	for action, acc := range a.desktop.actionShortcuts {
+		if wanted[action] == acc {
+			continue
+		}
+		mygo.GlobalShortcut.Unregister(acc)
+		delete(a.desktop.actionShortcuts, action)
+	}
+	var failed bool
+	for action, acc := range wanted {
+		if a.desktop.actionShortcuts[action] == acc {
+			continue
+		}
+		if acc == toggleShortcut && a.settings.GlobalShortcut {
+			a.clearGlobalKey(keymap.Action(action))
+			failed = true
+			continue
+		}
+		act := keymap.Action(action)
+		err := mygo.GlobalShortcut.Register(acc, func() {
+			a.update(func() { a.perform(act) })
+		})
+		if err != nil {
+			log.Printf("global shortcut %s: %v", acc, err)
+			a.clearGlobalKey(act)
+			failed = true
+			continue
+		}
+		a.desktop.actionShortcuts[action] = acc
+	}
+	if failed {
+		a.keyboard.problem = "A global shortcut could not be registered."
+		a.saveSettings()
+	}
+}
+
+// releaseActionShortcut drops a per-action global key that uses acc, so the
+// fixed play-or-pause shortcut can take that combination.
+func (a *app) releaseActionShortcut(acc string) {
+	if a.desktop == nil || !a.desktop.ownsActionShortcut(acc) {
+		return
+	}
+	mygo.GlobalShortcut.Unregister(acc)
+	for action, have := range a.desktop.actionShortcuts {
+		if have != acc {
+			continue
+		}
+		delete(a.desktop.actionShortcuts, action)
+		a.clearGlobalKey(keymap.Action(action))
+		a.keyboard.problem = "A global shortcut could not be registered."
+		a.saveSettings()
+	}
+}
+
+// clearGlobalKey forgets that an action is global, without registering again.
+func (a *app) clearGlobalKey(action keymap.Action) {
+	if a.settings.GlobalKeys == nil {
+		return
+	}
+	delete(a.settings.GlobalKeys, string(action))
+	if len(a.settings.GlobalKeys) == 0 {
+		a.settings.GlobalKeys = nil
 	}
 }
 

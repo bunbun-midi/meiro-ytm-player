@@ -130,6 +130,15 @@ type Settings struct {
 	// SpeedFine is how far a Ctrl-drag moves the speed slider compared with
 	// a normal drag. 0 means the default.
 	SpeedFine float64 `json:"speedFine,omitempty"`
+	// GlobalKeys names shortcuts that keep working while another app is
+	// focused, by action ID. Missing means the shortcut stays inside Meiro.
+	GlobalKeys map[string]bool `json:"globalKeys,omitempty"`
+	// BPMDetection finds a track's tempo and marks its measures. Off until
+	// the listener turns it on.
+	BPMDetection bool `json:"bpmDetection,omitempty"`
+	// MeasureSnap makes the measure-jump buttons land on the measure grid.
+	// Off, they add the measure's time to the current position.
+	MeasureSnap bool `json:"measureSnap,omitempty"`
 }
 
 // TrayMark names one of the menu bar icon styles.
@@ -242,6 +251,7 @@ func (s *Settings) clone() Settings {
 	c := *s
 	c.Recent = slices.Clone(s.Recent)
 	c.Shortcuts = maps.Clone(s.Shortcuts)
+	c.GlobalKeys = maps.Clone(s.GlobalKeys)
 	return c
 }
 

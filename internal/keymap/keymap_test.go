@@ -28,6 +28,21 @@ func TestLabelPerPlatform(t *testing.T) {
 	}
 }
 
+func TestAcceleratorUsesTheCrossPlatformModifier(t *testing.T) {
+	if got := (Binding{Cmd: true, Mods: ui.Shift, Key: ui.KeyJ}).Accelerator(); got != "CmdOrCtrl+Shift+J" {
+		t.Fatalf("got %q", got)
+	}
+	if got := (Binding{Key: ui.KeySpace}).Accelerator(); got != "Space" {
+		t.Fatalf("got %q", got)
+	}
+	if got := (Binding{Cmd: true, Key: ui.KeyMinus}).Accelerator(); got != "CmdOrCtrl+-" {
+		t.Fatalf("got %q", got)
+	}
+	if !CanBeGlobal(PlayPause) || !CanBeGlobal(Mute) || CanBeGlobal(Search) {
+		t.Fatal("global shortcuts are the playback keys")
+	}
+}
+
 func TestParseRoundTrip(t *testing.T) {
 	for _, info := range Actions {
 		for _, b := range info.Defaults {

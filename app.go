@@ -151,9 +151,11 @@ type app struct {
 	notch      notchState
 
 	// The local listening history and the stats page built from it.
-	historyPath    string
-	history        []history.Entry
-	historyLoaded  bool
+	historyPath   string
+	history       []history.Entry
+	historyLoaded bool
+	// plays is the playback-history popup on the player bar.
+	plays          playHistory
 	historyLoading bool
 	// historyDiscard drops the plays the read in flight brings: the user
 	// cleared the history while it was being read.

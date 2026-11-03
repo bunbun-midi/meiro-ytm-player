@@ -372,3 +372,71 @@ func Parse(text string) (Binding, bool) {
 
 // Known reports whether a key can be bound.
 func Known(key ui.Key) bool { _, ok := nameByKey[key]; return ok }
+
+// CanBeGlobal reports whether the action can keep working while another
+// app is focused. The settings page offers that for the playback keys a
+// listener reaches for without looking.
+func CanBeGlobal(a Action) bool {
+	switch a {
+	case PlayPause, Previous, Next, VolumeUp, VolumeDown, Mute:
+		return true
+	default:
+		return false
+	}
+}
+
+// Accelerator writes the binding the way a global shortcut is registered.
+// Cmd is CmdOrCtrl, so the same settings file is Control on Windows and
+// Linux and Command on macOS. Punctuation is the character itself.
+func (b Binding) Accelerator() string {
+	var parts []string
+	if b.Cmd {
+		parts = append(parts, "CmdOrCtrl")
+	}
+	if b.Mods&ui.Ctrl != 0 {
+		parts = append(parts, "Ctrl")
+	}
+	if b.Mods&ui.Alt != 0 {
+		parts = append(parts, "Alt")
+	}
+	if b.Mods&ui.Shift != 0 {
+		parts = append(parts, "Shift")
+	}
+	if b.Mods&ui.Super != 0 {
+		parts = append(parts, "Super")
+	}
+	key := acceleratorKey(b.Key)
+	if key == "" {
+		return ""
+	}
+	return strings.Join(append(parts, key), "+")
+}
+
+func acceleratorKey(k ui.Key) string {
+	switch k {
+	case ui.KeyMinus:
+		return "-"
+	case ui.KeyEqual:
+		return "="
+	case ui.KeyComma:
+		return ","
+	case ui.KeyPeriod:
+		return "."
+	case ui.KeySlash:
+		return "/"
+	case ui.KeySemicolon:
+		return ";"
+	case ui.KeyQuote:
+		return "'"
+	case ui.KeyBracketLeft:
+		return "["
+	case ui.KeyBracketRight:
+		return "]"
+	case ui.KeyBackslash:
+		return "\\"
+	case ui.KeyBackquote:
+		return "`"
+	default:
+		return keyName(k)
+	}
+}

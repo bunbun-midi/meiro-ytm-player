@@ -1836,7 +1836,7 @@ func TestReportProblemOpensPrefilledIssue(t *testing.T) {
 	var opened []string
 	a.openURL = func(link string) error { opened = append(opened, link); return nil }
 	a.router.Push("/settings")
-	tt := ui.NewTester(a.view, 1000, 5400)
+	tt := ui.NewTester(a.view, 1000, 6400)
 	tt.Frame()
 
 	if err := tt.Click("Report a problem"); err != nil {

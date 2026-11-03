@@ -60,7 +60,7 @@ var settingsRows = []settingsRow{
 
 	{key: "h-look", heading: "Appearance and sound"},
 	{key: "appearance", search: "theme appearance system light dark colour color colours colors violet indigo blue sky teal green lime amber orange red rose orchid hue palette tonal spot vibrant expressive neutral monochrome artwork dynamic matugen source", card: (*app).appearanceCard},
-	{key: "sound", search: "sound audio output device speakers headphones normalize loudness logarithmic equaliser volume bungee phase vocoder overlap-add time stretch speed ctrl drag fine", card: (*app).soundCard},
+	{key: "sound", search: "sound audio output device speakers headphones normalize loudness logarithmic equaliser volume bungee phase vocoder overlap-add time stretch speed ctrl drag fine bpm tempo beat measure detection", card: (*app).soundCard},
 
 	{key: "h-playback", heading: "Playback"},
 	{key: "playback", search: "auto skip disliked songs thumbs down", card: (*app).playbackCard},
@@ -68,7 +68,7 @@ var settingsRows = []settingsRow{
 
 	{key: "h-system", heading: "System"},
 	{key: "desktop", search: "desktop linux notifications discord rich presence activity status tray icon wordmark o mark low key subtle notch macbook lyrics", card: (*app).desktopCard},
-	{key: "keyboard", search: "keyboard shortcuts keys", card: (*app).keyboardCard},
+	{key: "keyboard", search: "keyboard shortcuts keys global", card: (*app).keyboardCard},
 
 	{key: "h-data", heading: "Storage and privacy"},
 	{key: "cache", search: "storage cache playback downloads", card: (*app).playbackCacheCard},
@@ -495,6 +495,13 @@ func (a *app) soundCard(c *ui.Context) {
 		if a.outputDevices != nil {
 			a.outputDeviceRow(c)
 		}
+		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
+			settingLabel(c, "BPM detection", "Find a track's tempo and mark the start of each measure on the seek bar.").Grow(1)
+			on := a.settings.BPMDetection
+			if m3.Switch(c, &on, "BPM detection on").Changed() {
+				a.setBPMDetection(on)
+			}
+		})
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
 			settingLabel(c, "Normalize loudness", "Adjust track gain to keep songs at a more consistent volume. Requires a signed-in YouTube session.").Grow(1)
 			on := a.settings.NormalizeLoudness

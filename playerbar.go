@@ -5,20 +5,33 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+
+	"github.com/elianiva/meiro/internal/bpm"
+	"github.com/elianiva/meiro/internal/history"
 	"github.com/elianiva/meiro/internal/keymap"
 	"github.com/elianiva/meiro/m3"
 	"github.com/elianiva/meiro/player"
 	"github.com/elianiva/meiro/youtube"
 )
 
+// playHistory is the popup of recent plays and the menu on one of them.
+type playHistory struct {
+	open bool
+	menu itemMenu
+}
+
 // transport builds the controls that start, stop and move through the queue:
-// shuffle, previous, play or pause, next and repeat. The play button is a
-// circle that squares off while the music plays, so the state shows in its
-// shape. size is the play button's side.
+// history, shuffle, previous, play or pause, next and repeat. The play button
+// is a circle that squares off while the music plays, so the state shows in
+// its shape. size is the play button's side.
 func (a *app) transport(c *ui.Context, size float32, gap float32) {
 	small := m3.IconButtonSpec{Size: m3.Small40}
 	ui.Row(c).Gap(gap).AlignItems(ui.Center).Justify(ui.Center).Shrink(0).Children(func() {
 		spec := small
+		spec.Icon, spec.Label, spec.Key = m3.IconHistory, "Playback history", "history"
+		historyButton := m3.IconButton(c, spec)
+		a.playbackHistory(c, historyButton)
+		spec = small
 		spec.Icon, spec.Label, spec.Toggle, spec.Selected, spec.Key = m3.IconShuffle, "Shuffle", true, a.shuffle, "shuffle"
 		a.hinted(c, func() {
 			if m3.IconButton(c, spec).Clicked() {
@@ -83,21 +96,57 @@ func (a *app) scrubber(c *ui.Context) {
 	ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 		m3.Text(c, m3.LabelMedium, clock(time.Duration(a.scrub*float64(time.Second)))).
 			MinWidth(40).NoWrap().TextAlign(ui.End).Shrink(0).TextColor(sc.OnSurfaceVariant).FontFeatures("tnum")
-		slider := m3.Slider(c, &a.scrub, 0, total, m3.SliderSpec{
-			Label: "Position", Key: "scrubber", Wavy: true, Waving: a.player.Playing(), Disabled: !known,
+		ui.Column(c.Key("scrub-track")).Grow(1).MinWidth(40).Gap(0).AlignItems(ui.Stretch).Children(func() {
+			if grid, ok := a.currentGrid(); ok && known {
+				a.measureTicks(c, grid)
+			}
+			slider := m3.Slider(c, &a.scrub, 0, total, m3.SliderSpec{
+				Label: "Position", Key: "scrubber", Wavy: true, Waving: a.player.Playing(), Disabled: !known,
+			})
+			// The slider grows inside a row. In this column that would
+			// stretch it vertically, so the track keeps its own height.
+			slider.Grow(0)
+			if slider.Pressed() {
+				a.scrubbing = true
+			}
+			if a.scrubbing && !slider.Pressed() {
+				a.scrubbing = false
+				a.seek(time.Duration(a.scrub * float64(time.Second)))
+			} else if slider.Changed() && !slider.Pressed() {
+				// Arrow keys, Home and End change the value without a pointer press.
+				a.seek(time.Duration(a.scrub * float64(time.Second)))
+			}
 		})
-		if slider.Pressed() {
-			a.scrubbing = true
-		}
-		if a.scrubbing && !slider.Pressed() {
-			a.scrubbing = false
-			a.seek(time.Duration(a.scrub * float64(time.Second)))
-		} else if slider.Changed() && !slider.Pressed() {
-			// Arrow keys, Home and End change the value without a pointer press.
-			a.seek(time.Duration(a.scrub * float64(time.Second)))
-		}
 		m3.Text(c, m3.LabelMedium, clock(a.total)).MinWidth(40).NoWrap().Shrink(0).TextColor(sc.OnSurfaceVariant).FontFeatures("tnum")
 	})
+}
+
+// measureTicks paints the start of each measure above the scrubber. A click
+// seeks to the nearest one.
+func (a *app) measureTicks(c *ui.Context, grid bpm.Grid) {
+	sc := m3.Of(c).Scheme
+	marks := grid.Measures(a.total)
+	bar := ui.ButtonBase(c.Key("measure-ticks")).Height(10).Label("Measure starts").Cursor(ui.CursorPointer)
+	bar.Background(ui.Transparent)
+	bar.Draw(func(p *ui.Painter, r ui.Rect) {
+		if a.total <= 0 || r.W <= 0 {
+			return
+		}
+		for _, at := range marks {
+			x := r.X + r.W*float32(float64(at)/float64(a.total))
+			p.Fill(ui.Rect{X: x - 0.75, Y: r.Y, W: 1.5, H: r.H}, sc.Primary, 1)
+		}
+	})
+	if bar.Clicked() {
+		x, _, _ := bar.PointerPosition()
+		if w := bar.Bounds().W; w > 0 {
+			at := time.Duration(float64(x/w) * float64(a.total))
+			if target, ok := grid.Nearest(at, a.total); ok {
+				a.scrub = target.Seconds()
+				a.seek(target)
+			}
+		}
+	}
 }
 
 // volumeIcon is the speaker shape for the current volume.
@@ -245,6 +294,7 @@ func (a *app) speedControl(c *ui.Context, key string) {
 			a.rateSlider(c, "Speed", "Playback speed", key+"-speed", player.MinSpeed, player.MaxSpeed, 0.01, speed, speedLabel, a.setSpeed, true)
 			a.rateSlider(c, "Pitch", "Pitch in semitones", key+"-pitch", player.MinPitch, player.MaxPitch, 0.1, pitch, pitchLabel, a.setPitch, false)
 			a.pitchPresets(c, key, pitch, presetW, textSize)
+			a.measureJumps(c, key)
 			if m3.Button(c, m3.ButtonSpec{Label: "Normal", Kind: m3.TextOnly, Size: m3.Small40, Key: key + "-reset"}).Clicked() {
 				a.resetPlaybackRate()
 			}
@@ -343,6 +393,79 @@ func (a *app) pitchPreset(c *ui.Context, key string, semitones int, pitch float6
 	})
 	if b.Clicked() {
 		a.setPitch(float64(semitones))
+	}
+}
+
+// measureJump is one button under the semitone presets.
+type measureJump struct {
+	n    float64
+	text string
+	name string
+}
+
+// The two rows of measure jumps: forward, then back by the same amounts.
+var measureJumpRows = [][]measureJump{
+	{
+		{1, "+1", "Jump forward 1 measure"},
+		{0.5, "+1/2", "Jump forward 1/2 measure"},
+		{0.25, "+1/4", "Jump forward 1/4 measure"},
+		{0.125, "+1/8", "Jump forward 1/8 measure"},
+		{2, "+2", "Jump forward 2 measures"},
+		{4, "+4", "Jump forward 4 measures"},
+		{8, "+8", "Jump forward 8 measures"},
+	},
+	{
+		{-1, "−1", "Jump back 1 measure"},
+		{-0.5, "−1/2", "Jump back 1/2 measure"},
+		{-0.25, "−1/4", "Jump back 1/4 measure"},
+		{-0.125, "−1/8", "Jump back 1/8 measure"},
+		{-2, "−2", "Jump back 2 measures"},
+		{-4, "−4", "Jump back 4 measures"},
+		{-8, "−8", "Jump back 8 measures"},
+	},
+}
+
+// measureJumps adds or subtracts measures of the current tempo. The switch
+// beside the rows lands on the measure grid instead.
+func (a *app) measureJumps(c *ui.Context, key string) {
+	_, ready := a.currentGrid()
+	ui.Row(c.Key(key + "-measures")).Gap(8).AlignItems(ui.Center).Children(func() {
+		ui.Column(c).Grow(1).Gap(4).Children(func() {
+			for row, jumps := range measureJumpRows {
+				ui.Row(c.Key(key + "-measures-" + strconv.Itoa(row))).Gap(2).Children(func() {
+					for _, jump := range jumps {
+						a.measureJumpButton(c, key, jump, ready)
+					}
+				})
+			}
+		})
+		on := a.settings.MeasureSnap
+		sw := m3.CompactSwitch(c, &on, "Snap to measures")
+		sw.Tooltip("Land on the measure grid instead of jumping from here")
+		if sw.Changed() {
+			a.settings.MeasureSnap = on
+			a.saveSettings()
+		}
+	})
+}
+
+func (a *app) measureJumpButton(c *ui.Context, key string, jump measureJump, ready bool) {
+	sc := m3.Of(c).Scheme
+	b := ui.ButtonBase(c.Key(key + "-meas-" + jump.text)).Height(28).Grow(1).MinWidth(0).
+		Radius(m3.ExtraSmall).Cursor(ui.CursorPointer).Label(jump.name).Tooltip(jump.name).
+		Justify(ui.Center).AlignItems(ui.Center)
+	fg := sc.OnSurface
+	if !ready {
+		b.Opacity(0.38)
+		fg = sc.OnSurface.Alpha(0.38)
+	}
+	b.Background(m3.StateFill(sc.SurfaceContainerHighest, fg, b.Hovered(), b.Pressed(), b.FocusVisible())).TextColor(fg)
+	b.Children(func() {
+		m3.LabelSmall.Style(ui.Text(c, jump.text), true).TextAlign(ui.Center).NoWrap().
+			TextColor(fg).FontFeatures("tnum").LetterSpacing(0).FontSize(10)
+	})
+	if b.Clicked() && ready {
+		a.jumpMeasures(jump.n)
 	}
 }
 
@@ -489,4 +612,122 @@ func (a *app) playerBar(c *ui.Context) {
 			}
 		})
 	})
+}
+
+// historyPopupLimit is how many recent plays the player button lists.
+const historyPopupLimit = 40
+
+// playbackHistory opens the recent plays beside the button that asked for them.
+func (a *app) playbackHistory(c *ui.Context, anchor ui.Element) {
+	sc := m3.Of(c).Scheme
+	wasOpen := a.plays.open
+	if anchor.Clicked() {
+		if wasOpen {
+			a.plays.open = false
+			a.plays.menu.close()
+		} else {
+			a.plays.open = true
+			a.loadHistory()
+		}
+	}
+	if !a.plays.open {
+		return
+	}
+	open := true
+	ui.PopoverBase(c, anchor, &open, func(panel ui.Element) {
+		panel.Key("playback-history").Width(280).Padding(8).Radius(m3.Large).Margin(8, 0, 0, 0).
+			Background(sc.SurfaceContainerHigh)
+		m3.Elevation(c, panel, 3)
+		plays := a.recentPlays()
+		if len(plays) == 0 {
+			m3.Text(c, m3.BodyMedium, "Nothing played yet").TextColor(sc.OnSurfaceVariant).Padding(8)
+			return
+		}
+		ui.Scroll(c).Key("playback-history-list").MaxHeight(360).Children(func() {
+			for i, entry := range plays {
+				a.historyPlayRow(c, i, entry)
+			}
+		})
+	})
+	if !open {
+		a.plays.open = false
+		a.plays.menu.close()
+	}
+}
+
+// recentPlays is the newest plays, up to historyPopupLimit.
+func (a *app) recentPlays() []history.Entry {
+	n := len(a.history)
+	if n > historyPopupLimit {
+		n = historyPopupLimit
+	}
+	out := make([]history.Entry, n)
+	for i := range out {
+		out[i] = a.history[len(a.history)-1-i]
+	}
+	return out
+}
+
+func (a *app) historyPlayRow(c *ui.Context, i int, entry history.Entry) {
+	sc := m3.Of(c).Scheme
+	title := entry.Title
+	if title == "" {
+		title = "Unknown track"
+	}
+	key := "played-" + strconv.Itoa(i) + "-" + entry.VideoID
+	row := ui.ButtonBase(c.Key(key)).Height(48).PaddingX(8).Radius(m3.Medium).
+		Cursor(ui.CursorPointer).Label(title).AlignItems(ui.Center)
+	row.Background(m3.StateFill(ui.Transparent, sc.OnSurface, row.Hovered(), row.Pressed(), row.FocusVisible()))
+	var anchor ui.Element
+	var has bool
+	row.Children(func() {
+		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+			m3.Text(c, m3.BodyMedium, title).SingleLine().TextColor(sc.OnSurface)
+			if entry.Artist != "" {
+				m3.Text(c, m3.BodySmall, entry.Artist).SingleLine().TextColor(sc.OnSurfaceVariant)
+			}
+		})
+		anchor, has = a.plays.menu.pointerAnchor(c, key)
+	})
+	pointer := row.RightClicked()
+	if pointer || row.Shortcut(ui.Shift, ui.KeyF10) {
+		x, y, _ := row.PointerPosition()
+		a.plays.menu.show(key, pointer, x, y)
+	}
+	if a.plays.menu.owns(key) {
+		a.historyPlayMenu(c, a.plays.menu.anchor(row, anchor, has), key, entry)
+	}
+}
+
+// historyPlayMenu queues the play from the video id the history recorded.
+func (a *app) historyPlayMenu(c *ui.Context, anchor ui.Element, key string, entry history.Entry) {
+	if !a.plays.menu.owns(key) {
+		return
+	}
+	item := historyTrack(entry)
+	m3.Menu(c, anchor, &a.plays.menu.open, 200, func() {
+		if m3.MenuItem(c, "Add Next", m3.IconNext).Clicked() {
+			a.enqueue(item, true)
+			a.plays.menu.close()
+		}
+		if m3.MenuItem(c, "Add to Queue", m3.IconQueue).Clicked() {
+			a.enqueue(item, false)
+			a.plays.menu.close()
+		}
+	})
+}
+
+// historyTrack is the track a history entry can be queued as. VideoID is
+// the string recorded for that play.
+func historyTrack(entry history.Entry) youtube.MusicItem {
+	title := entry.Title
+	if title == "" {
+		title = "Unknown track"
+	}
+	return youtube.MusicItem{
+		VideoID:  entry.VideoID,
+		Title:    title,
+		Subtitle: entry.Artist,
+		Kind:     youtube.KindTrack,
+	}
 }

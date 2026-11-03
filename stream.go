@@ -121,9 +121,11 @@ func (a *app) streamAudio(item youtube.MusicItem, startAt time.Duration, changed
 // cache is the audio cache the track was looked for in.
 func (a *app) audioStarted(item youtube.MusicItem, found resolvedAudio, position time.Duration, changed bool, cache *audio.Cache) {
 	a.skipped = 0
+	a.playbackURL = found.url
 	if changed {
 		a.recordHistory(item)
 	}
+	a.detectTempo(item.VideoID, found.url)
 	if item.IsEpisode() {
 		a.beginEpisodeProgress(item, position, found.total)
 	} else if changed {

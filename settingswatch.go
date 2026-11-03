@@ -232,9 +232,20 @@ func (a *app) applyReloadedSettings(previous settings.Settings) {
 	if s.OutputDevice != previous.OutputDevice {
 		a.applyOutputDevice()
 	}
+	if s.BPMDetection != previous.BPMDetection {
+		a.beatTask.stop()
+		a.beats = beatState{}
+		if s.BPMDetection {
+			a.detectTempo(a.current.VideoID, a.playbackURL)
+		}
+	}
 	if !maps.Equal(s.Shortcuts, previous.Shortcuts) {
 		a.keyboard.keys = nil
 		a.keyboard.problem = ""
+		a.syncGlobalKeys()
+	}
+	if !maps.Equal(s.GlobalKeys, previous.GlobalKeys) {
+		a.syncGlobalKeys()
 	}
 	if s.ShowTray != previous.ShowTray || s.TrayMark != previous.TrayMark || s.ShowNotch != previous.ShowNotch ||
 		s.DiscordPresence != previous.DiscordPresence ||
