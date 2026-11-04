@@ -89,6 +89,8 @@ type Player struct {
 	// crossfade is how long the end of a track fades into the start of the
 	// next, zero for none. Written under ctl.
 	crossfade time.Duration
+	// seekFade is the short fade on a seek. Off, a seek cuts at zero crossings.
+	seekFade atomic.Bool
 	// blend is the second voice, and comp the limiter after it. meters is
 	// what the playback panel draws. The audio thread reads the copies
 	// published onto the session.
@@ -318,8 +320,9 @@ func (p *Player) Toggle() {
 	s.out.Pause()
 }
 
-// Seek moves to at within the stream by restarting the decode there. It
-// keeps the stream paused when it was paused.
+// Seek moves to at within the stream. Audio already decoded is cut there
+// at once. A position past that falls back to restarting the decode. A
+// paused stream stays paused.
 func (p *Player) Seek(at time.Duration) {
 	p.SeekContext(context.Background(), at)
 }
@@ -328,6 +331,12 @@ func (p *Player) Seek(at time.Duration) {
 func (p *Player) SeekContext(ctx context.Context, at time.Duration) {
 	p.ctl.Lock()
 	defer p.ctl.Unlock()
+	if at < 0 {
+		return
+	}
+	if p.Jump(at) {
+		return
+	}
 	p.mu.Lock()
 	s := p.session
 	var url string
@@ -336,10 +345,79 @@ func (p *Player) SeekContext(ctx context.Context, at time.Duration) {
 		url, paused = s.url, s.paused
 	}
 	p.mu.Unlock()
-	if s == nil || at < 0 {
+	if s == nil {
 		return
 	}
 	_ = p.start(ctx, url, at, paused)
+}
+
+// Jump moves playback to at when that moment has already been decoded.
+// The cut is the zero crossing nearest at, and the audio already queued
+// for the speakers is cut at the zero crossing nearest now. It reports
+// false when the decode has not reached at yet, or nothing is playing.
+func (p *Player) Jump(at time.Duration) bool {
+	if p == nil || at < 0 {
+		return false
+	}
+	p.mu.Lock()
+	s := p.session
+	fade := p.seekFade.Load()
+	var offset time.Duration
+	if s != nil {
+		offset = s.offset
+	}
+	p.mu.Unlock()
+	if s == nil || s.spool == nil || s.out == nil {
+		return false
+	}
+	frame := durationFrames(at) - durationFrames(offset)
+	if frame < 0 {
+		return false
+	}
+	snapped, ok := s.spool.Zero(frame)
+	if !ok || !s.spool.Jump(snapped) {
+		return false
+	}
+	p.mu.Lock()
+	if p.session != s {
+		p.mu.Unlock()
+		return false
+	}
+	s.cursor.Store(snapped)
+	s.jumpGen.Add(1)
+	p.mu.Unlock()
+	if c, ok := s.out.(interface{ Cut(bool) }); ok {
+		c.Cut(fade)
+	}
+	return true
+}
+
+// SetSeekFade chooses the short fade across a seek. Off, the cut is the
+// zero crossings alone.
+func (p *Player) SetSeekFade(on bool) {
+	if p == nil {
+		return
+	}
+	p.seekFade.Store(on)
+}
+
+// Waveform is the decoded shape of the stream playing now.
+func (p *Player) Waveform() Waveform {
+	if p == nil {
+		return Waveform{}
+	}
+	p.mu.Lock()
+	s := p.session
+	var start time.Duration
+	if s != nil {
+		start = s.offset
+	}
+	p.mu.Unlock()
+	if s == nil || s.spool == nil {
+		return Waveform{}
+	}
+	peaks, frames := s.spool.snapshot()
+	return Waveform{Peaks: peaks, Start: start, End: start + framesDuration(float64(frames))}
 }
 
 // Stop ends the stream and forgets it.
@@ -673,11 +751,12 @@ func (p *Player) Position() time.Duration {
 // they are taken off. A speed chosen halfway through does not move the time
 // already played. The caller holds p.mu.
 func (s *session) played() time.Duration {
-	if s.rate == nil || s.out == nil || s.source == nil {
-		return s.offset
+	cursor := framesDuration(float64(s.cursor.Load()))
+	if s.rate == nil || s.out == nil || s.source == nil || s.rate.landed.Load() != s.jumpGen.Load() {
+		return s.offset + cursor
 	}
 	heard := max(s.source.read.Load()-int64(s.out.BufferedSize()), 0) / frameBytes
-	return s.offset + time.Duration(s.rate.sourceAt(heard)/float64(sampleRate)*float64(time.Second))
+	return s.offset + cursor + framesDuration(s.rate.sourceAt(heard))
 }
 
 // Failure returns what ffmpeg reported when the decode stopped because of an
@@ -812,23 +891,42 @@ func (p *Player) decode(ffmpeg, url string, at time.Duration, eq []float64, bass
 		return nil, fmt.Errorf("player: start ffmpeg: %w", err)
 	}
 	_ = writer.Close()
+	spool, err := openSpool()
+	if err != nil {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		_ = pipe.Close()
+		return nil, err
+	}
+	go spool.copy(pipe)
 	s := &session{
-		url: url, cmd: cmd, pipe: pipe, stderr: stderr,
+		url: url, cmd: cmd, pipe: pipe, stderr: stderr, spool: spool,
 		offset: at, done: make(chan struct{}), quit: make(chan struct{}), eq: newEqualizer(eq),
 		bass: newBassBoost(bassOn, bassDB),
 	}
 	p.mu.Lock()
 	blend, comp := p.blend, p.comp
 	p.mu.Unlock()
-	// Two readers share the pipe through a fan, so a second pitch stays on
-	// the same source samples as the main voice. The main reader remains
-	// the position clock: its output frames are the ones the device plays.
-	s.voices = newVoiceMix(pipe, speed, pitch, stretch, blend)
+	// Two readers share the decoded file through a fan, so a second pitch
+	// stays on the same source samples as the main voice. The file is what
+	// a seek moves through. The main reader remains the position clock: its
+	// output frames are the ones the device plays.
+	s.voices = newVoiceMix(spool, speed, pitch, stretch, blend)
 	s.voices.storeComp(comp)
 	s.rate = s.voices.main
 	s.comp = newCompReader(newEQReader(newBassReader(s.voices, s.bass), s.eq), comp, p.meters)
 	s.fade = newFadeReader(s.comp, func() *session { return p.upcoming(s) })
 	s.source = newCountingReader(s.fade, func() io.Reader { return p.handoff(s) })
+	s.voices.onJump = func() {
+		s.source.read.Store(0)
+		s.rate.landed.Store(s.jumpGen.Load())
+		if s.out != nil {
+			if k, ok := s.out.(interface{ Keep() }); ok {
+				k.Keep()
+			}
+		}
+	}
 	go p.reap(s)
 	return s, nil
 }
@@ -997,7 +1095,13 @@ func (p *Player) stop() {
 		_ = s.cmd.Process.Kill()
 	}
 	_ = s.pipe.Close()
+	if s.spool != nil {
+		s.spool.shutdown()
+	}
 	s.out.PauseAndStopReading()
+	if s.spool != nil {
+		s.spool.remove()
+	}
 }
 
 // discard ends a decode that never reached the output.
@@ -1007,6 +1111,10 @@ func (s *session) discard() {
 		_ = s.cmd.Process.Kill()
 	}
 	_ = s.pipe.Close()
+	if s.spool != nil {
+		s.spool.shutdown()
+		s.spool.remove()
+	}
 }
 
 func (p *Player) resolveFFmpeg(ctx context.Context) (string, error) {
@@ -1168,10 +1276,16 @@ type session struct {
 	// quit is closed when the app stops the decode.
 	quit chan struct{}
 
-	// offset is where in the track this decode began. rate stretches and
-	// shifts the decoded audio as it plays.
-	offset time.Duration
-	rate   *rateReader
+	// offset is where in the track this decode began. cursor is how many
+	// frames past that a seek has moved, within audio already written.
+	// jumpGen is that seek; the rate reader copies it into landed once the
+	// new samples are what it plays. rate stretches and shifts the decoded
+	// audio as it plays.
+	offset  time.Duration
+	cursor  atomic.Int64
+	jumpGen atomic.Uint64
+	spool   *pcmSpool
+	rate    *rateReader
 	// voices mixes the main pitch with the second one. comp limits the sum.
 	voices *voiceMix
 	comp   *compReader
@@ -1207,9 +1321,10 @@ func (c *countingReader) Read(p []byte) (int, error) {
 	n, err := c.reader.Read(p)
 	c.read.Add(int64(n))
 	if err != nil {
-		// The stretch asks again when the next samples are not here yet.
-		// That is not the end of the track.
-		if errors.Is(err, io.ErrNoProgress) {
+		// The stretch asks again when the next samples are not here yet,
+		// and a seek asks the reader to start again at the new position.
+		// Neither is the end of the track.
+		if errors.Is(err, io.ErrNoProgress) || errors.Is(err, errJumped) {
 			return n, err
 		}
 		if errors.Is(err, io.EOF) {

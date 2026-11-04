@@ -254,6 +254,14 @@ func (a *app) applyReloadedSettings(previous settings.Settings) {
 		a.playbackPanel.x = float32(s.PlaybackX)
 		a.playbackPanel.y = float32(s.PlaybackY)
 	}
+	if s.SeekFade != previous.SeekFade {
+		a.applySeekFade()
+	}
+	if s.WaveformPlaced != previous.WaveformPlaced || s.WaveformX != previous.WaveformX || s.WaveformY != previous.WaveformY {
+		a.wave.placed = s.WaveformPlaced
+		a.wave.x = float32(s.WaveformX)
+		a.wave.y = float32(s.WaveformY)
+	}
 	if s.OutputDevice != previous.OutputDevice {
 		a.applyOutputDevice()
 	}

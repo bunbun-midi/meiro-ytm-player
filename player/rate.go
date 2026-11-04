@@ -168,6 +168,11 @@ type rateReader struct {
 	copying   bool
 	copyPos   int64
 	flatPitch bool
+
+	// landed is the seek generation whose audio this reader is playing.
+	// The audio thread writes it when a seek has been applied. played
+	// waits for it so a position does not add the old timeline to the new one.
+	landed atomic.Uint64
 }
 
 func newRateReader(src io.Reader, ctl *rateControl) *rateReader {
@@ -229,6 +234,9 @@ func (r *rateReader) Read(p []byte) (int, error) {
 				r.enterCopy()
 			}
 			if err := r.copyOne(p[n*frameBytes:]); err != nil {
+				if errors.Is(err, errJumped) {
+					return 0, err
+				}
 				if n > 0 {
 					return n * frameBytes, nil
 				}
@@ -239,6 +247,9 @@ func (r *rateReader) Read(p []byte) (int, error) {
 				r.leaveCopy()
 			}
 			if err := r.ensure(); err != nil {
+				if errors.Is(err, errJumped) {
+					return 0, err
+				}
 				if n > 0 {
 					return n * frameBytes, nil
 				}
@@ -304,6 +315,39 @@ func (r *rateReader) leaveCopy() {
 	r.pvCopied = false
 	r.pvHa = 0
 	r.draining = false
+}
+
+// resetJump forgets every sample this reader has buffered, so the next read
+// is the audio a seek just landed on. The control's speed and pitch stay.
+func (r *rateReader) resetJump() {
+	r.frames = nil
+	r.origin = 0
+	r.partial = nil
+	r.eof = false
+	r.inputEnd.Store(-1)
+	r.fail = nil
+	r.ola = nil
+	r.olaOrigin = 0
+	r.olaEnd = 0
+	r.inPos = 0
+	r.prevIn = 0
+	r.grainAt = 0
+	r.emitted = 0
+	r.olaPos = 0
+	r.draining = false
+	r.copying = false
+	r.copyPos = 0
+	r.spans.Store(nil)
+	r.b.reset()
+	r.pvHave = false
+	r.pvCopied = false
+	r.pvHa = 0
+	speed, pitch, _ := r.heard()
+	r.ratio = pitchRatio(pitch)
+	if r.ratio == 0 {
+		r.ratio = 1
+	}
+	r.stretch = clampSpeed(speed) / r.ratio
 }
 
 // copyOne writes the next source frame unchanged.
@@ -455,6 +499,9 @@ func (r *rateReader) fill(until int64) error {
 	for !r.eof && r.origin+int64(len(r.frames)) < until {
 		var buf [8 * 1024]byte
 		n, err := r.src.Read(buf[:])
+		if errors.Is(err, errJumped) {
+			return errJumped
+		}
 		if n > 0 {
 			r.appendPCM(buf[:n])
 		}

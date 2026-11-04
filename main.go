@@ -219,7 +219,11 @@ func (a *app) setup() {
 	a.playbackPanel.placed = a.settings.PlaybackPlaced
 	a.playbackPanel.x = float32(a.settings.PlaybackX)
 	a.playbackPanel.y = float32(a.settings.PlaybackY)
+	a.wave.placed = a.settings.WaveformPlaced
+	a.wave.x = float32(a.settings.WaveformX)
+	a.wave.y = float32(a.settings.WaveformY)
 	a.applyCrossfade()
+	a.applySeekFade()
 	a.applyStretch()
 	if runtime.GOOS == "windows" && (runtime.GOARCH == "amd64" || runtime.GOARCH == "arm64") {
 		a.outputDevices = player.OutputDevices

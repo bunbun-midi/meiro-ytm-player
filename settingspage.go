@@ -503,6 +503,15 @@ func (a *app) soundCard(c *ui.Context) {
 			}
 		})
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
+			settingLabel(c, "Fade seeks", "A seek fades out and back in over a few milliseconds. Off, it cuts at the zero crossings nearest the current time and the place it lands.").Grow(1)
+			on := a.settings.SeekFade
+			if m3.Switch(c, &on, "Fade seeks on").Changed() {
+				a.settings.SeekFade = on
+				a.applySeekFade()
+				a.saveSettings()
+			}
+		})
+		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
 			settingLabel(c, "Download folder", "Songs saved from the player and from a song's menu go here, named Artist - Song.").Grow(1).MinWidth(0)
 			folder := a.downloads.dir
 			if folder == "" {

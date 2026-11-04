@@ -210,6 +210,14 @@ func (a *app) volumeIcon() *ui.SVG {
 	return icon
 }
 
+// waveformButton opens the floating waveform. It sits to the left of Mute.
+func (a *app) waveformButton(c *ui.Context) {
+	button := m3.IconButton(c, m3.IconButtonSpec{Icon: m3.IconWaveform, Label: "Waveform", Key: "waveform"})
+	if button.Clicked() {
+		a.wave.open = !a.wave.open
+	}
+}
+
 // muteButton is the speaker button, which mutes or restores the volume.
 func (a *app) muteButton(c *ui.Context) ui.Element {
 	button := m3.IconButton(c, m3.IconButtonSpec{Icon: a.volumeIcon(), Label: "Mute", Key: "mute"})
@@ -244,6 +252,7 @@ func (a *app) volumeSlider(c *ui.Context, vertical bool) ui.Element {
 func (a *app) volumeControl(c *ui.Context, sliderWidth float32) {
 	a.nowPlaying.volumePopup = false
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
+		a.waveformButton(c)
 		a.hinted(c, func() {
 			a.muteButton(c)
 		}, keymap.Mute)
@@ -263,6 +272,7 @@ func (a *app) volumeControl(c *ui.Context, sliderWidth float32) {
 func (a *app) compactVolumeControl(c *ui.Context) {
 	sc := m3.Of(c).Scheme
 	ui.Row(c).Shrink(0).Children(func() {
+		a.waveformButton(c)
 		var anchor ui.Element
 		a.hinted(c, func() { anchor = a.muteButton(c) }, keymap.Mute)
 

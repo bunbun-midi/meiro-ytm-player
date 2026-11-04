@@ -1,6 +1,7 @@
 package player
 
 import (
+	"errors"
 	"io"
 	"math"
 	"sync/atomic"
@@ -153,6 +154,7 @@ type pcmFan struct {
 	base    int
 	pos     [2]int
 	err     error
+	seen    uint64
 	scratch [8192]byte
 }
 
@@ -165,13 +167,37 @@ func (f *pcmFan) branch(id int) io.Reader { return fanBranch{fan: f, id: id} }
 
 func (b fanBranch) Read(p []byte) (int, error) { return b.fan.read(b.id, p) }
 
+func (f *pcmFan) epoch() uint64 {
+	if e, ok := f.src.(interface{ Epoch() uint64 }); ok {
+		return e.Epoch()
+	}
+	return f.seen
+}
+
+func (f *pcmFan) resetBuf() {
+	f.buf = nil
+	f.base = 0
+	f.pos = [2]int{}
+	f.err = nil
+}
+
 func (f *pcmFan) read(id int, p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
+	if ep := f.epoch(); ep != f.seen {
+		f.resetBuf()
+		f.seen = ep
+		return 0, errJumped
+	}
 	want := f.pos[id] + len(p)
 	for f.base+len(f.buf) < want && f.err == nil {
 		n, err := f.src.Read(f.scratch[:])
+		if errors.Is(err, errJumped) {
+			f.resetBuf()
+			f.seen = f.epoch()
+			return 0, errJumped
+		}
 		if n > 0 {
 			f.buf = append(f.buf, f.scratch[:n]...)
 		}
@@ -227,12 +253,17 @@ func (f *pcmFan) compact() {
 type voiceMix struct {
 	main *rateReader
 	oct  *rateReader
+	src  io.Reader
+	seen uint64
 	live atomic.Pointer[blendLive]
 
 	mainQ, octQ byteQueue
 	scratch     [8192]byte
 	mainG, octG float64
 	ready       bool
+	// onJump runs on the audio thread after a seek has discarded both
+	// voices' buffers, before the samples from the new position are read.
+	onJump func()
 	// limit pulls the sum back under full scale before it is stored as
 	// 16-bit samples. A later limiter, after the equaliser, catches a
 	// boost that would clip again.
@@ -252,7 +283,7 @@ func newVoiceMix(src io.Reader, speed, pitch float64, stretch Stretch, blend Ble
 	rel := clampVoice(pitch + blend.Rel)
 	oct := newRateReader(fan.branch(1), newRateControl(speed, rel))
 	oct.set(speed, rel, stretch)
-	m := &voiceMix{main: main, oct: oct}
+	m := &voiceMix{main: main, oct: oct, src: src}
 	m.setBlend(blend)
 	return m
 }
@@ -295,38 +326,63 @@ func (m *voiceMix) Read(p []byte) (int, error) {
 		return 0, nil
 	}
 	n := len(p) - len(p)%frameBytes
-	_, wantOct := m.gains()
-	// A silent second voice stays at the recording's pitch. Its samples are
-	// multiplied by zero, and keeping it out of the stretcher means a
-	// glitch there cannot reach the mix.
-	m.oct.flatPitch = wantOct == 0 && m.octG < 1e-6
-	errMain := m.mainQ.fill(m.main, n, m.scratch[:])
-	errOct := m.octQ.fill(m.oct, n, m.scratch[:])
-	have := min(m.mainQ.buffered(), m.octQ.buffered())
-	have -= have % frameBytes
-	if have == 0 {
-		if errMain != nil {
-			return 0, errMain
+	for range 8 {
+		if e, ok := m.src.(interface{ Epoch() uint64 }); ok {
+			if ep := e.Epoch(); ep != m.seen {
+				m.mainQ = byteQueue{}
+				m.octQ = byteQueue{}
+				m.main.resetJump()
+				m.oct.resetJump()
+				m.seen = ep
+				if m.onJump != nil {
+					m.onJump()
+				}
+			}
 		}
-		if errOct != nil {
-			return 0, errOct
+		_, wantOct := m.gains()
+		// A silent second voice stays at the recording's pitch. Its samples are
+		// multiplied by zero, and keeping it out of the stretcher means a
+		// glitch there cannot reach the mix.
+		m.oct.flatPitch = wantOct == 0 && m.octG < 1e-6
+		errMain := m.mainQ.fill(m.main, n, m.scratch[:])
+		errOct := m.octQ.fill(m.oct, n, m.scratch[:])
+		if errors.Is(errMain, errJumped) || errors.Is(errOct, errJumped) {
+			m.mainQ = byteQueue{}
+			m.octQ = byteQueue{}
+			m.main.resetJump()
+			m.oct.resetJump()
+			if m.onJump != nil {
+				m.onJump()
+			}
+			continue
 		}
-		return 0, nil
+		have := min(m.mainQ.buffered(), m.octQ.buffered())
+		have -= have % frameBytes
+		if have == 0 {
+			if errMain != nil {
+				return 0, errMain
+			}
+			if errOct != nil {
+				return 0, errOct
+			}
+			return 0, nil
+		}
+		main := m.mainQ.peek(have)
+		oct := m.octQ.peek(have)
+		m.mix(p[:have], main, oct)
+		m.mainQ.drop(have)
+		m.octQ.drop(have)
+		if have < n {
+			if errMain != nil {
+				return have, errMain
+			}
+			if errOct != nil {
+				return have, errOct
+			}
+		}
+		return have, nil
 	}
-	main := m.mainQ.peek(have)
-	oct := m.octQ.peek(have)
-	m.mix(p[:have], main, oct)
-	m.mainQ.drop(have)
-	m.octQ.drop(have)
-	if have < n {
-		if errMain != nil {
-			return have, errMain
-		}
-		if errOct != nil {
-			return have, errOct
-		}
-	}
-	return have, nil
+	return 0, io.ErrNoProgress
 }
 
 // gains is how loud each voice should be for the fader position published

@@ -14,6 +14,7 @@ go_library(
         "output_windows.go",
         "player.go",
         "rate.go",
+        "spool.go",
         "vocoder.go",
         "bungee.go",
         "window_unix.go",
@@ -44,6 +45,7 @@ go_test(
         "output_windows_test.go",
         "player_test.go",
         "rate_test.go",
+        "spool_test.go",
     ],
     embed = [":player"],
 )

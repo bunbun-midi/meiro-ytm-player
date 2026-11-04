@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **A waveform to seek on.** The button to the left of Mute opens a wide panel. Drag its title to move it. The wheel zooms the wave under the pointer, and a click seeks there. Hovering shows where that click would land: the bar and beat, as the first two numbers of a bars.beats display, and how far that is from the current position.
+- **Fade a seek.** Settings → Sound → Fade seeks fades the audio out and back in over a few milliseconds. Off, a seek cuts at the zero crossings nearest the current time and the place it lands.
 - **Save a playlist on this computer.** Playlists, under Library, lists them. Right-click the queue beside the rail and choose All To Playlist to name that queue, or Song to Playlist and type a name to add the song. On Playlists, click a playlist to open or close it, and right-click it to choose Add Next, Add to Queue or Replace List. A playlist can be removed from that page.
 - **Queue a track without moving it.** Right-click the queue beside the rail and choose Queue Next or Queue Last. The list stays as it is. A blue number, such as [1], sits beside each track you queued, in the order those tracks will play. That menu's rows sit closer together, with less space after the labels.
 - **Open a YouTube Music link from search.** Pasting a link to a song, album, playlist, artist, podcast or channel into the search bar opens it. A channel handle is opened too.
@@ -36,6 +38,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **Seeking continues from audio that is already decoded.** The playhead cuts there instead of restarting the decoder, so a seek lands the way it does in a DJ program. A seek past what has been decoded still restarts it.
 - **Normal speed and pitch play the recording as it is.** The time-stretch stays out of the sound until the speed or the pitch moves, and a silent second voice is not passed through it either. A moment with no samples ready no longer stops the track.
 - **A saved playlist shows every song.** Opening one on Playlists lists the whole playlist, and the list scrolls to the end of it. Click the name to close it, and click again to open it.
 - **An artist's playlists are the whole set.** The page lists every playlist, including the ones past the first row. A search does the same for a playlists shelf.

@@ -536,15 +536,39 @@ func (a *app) previous() {
 // seek moves the track to a position. seekVersion tells the system's media
 // controls an explicit change of position from playback moving on.
 //
-// Moving the player there restarts the decode: it kills ffmpeg and waits for
-// the audio device, which is not for the main thread to do. One seek is on its
-// way at a time, and a position asked for while one is on its way is the one
-// the next, and last, seek applies.
+// A position inside audio already decoded is cut there on the main thread.
+// Past that, the player restarts the decode: it kills ffmpeg and waits for
+// the audio device, which is not for the main thread to do. One of those
+// restarts is on its way at a time, and a position asked for while one is on
+// its way is the one the next, and last, seek applies.
 func (a *app) seek(position time.Duration) {
 	a.scrobble.listen.Break() // the position jumps; what it jumps over was not heard
 	a.seekTarget = position
-	if !a.seeking.busy() {
-		a.applySeek()
+	if a.seeking.busy() {
+		return
+	}
+	if a.player != nil && a.player.Jump(position) {
+		a.noteSeek(a.player.Position())
+		return
+	}
+	a.applySeek()
+}
+
+// noteSeek records that playback was moved on purpose, for the system media
+// controls and for an episode's saved progress.
+func (a *app) noteSeek(applied time.Duration) {
+	a.seekVersion++
+	if state := a.episodeProgress; state != nil {
+		state.lastReported, state.lastPosition, state.lastSample = applied, applied, time.Now()
+		state.seekVersion = a.seekVersion
+	}
+	a.syncSystemMedia()
+}
+
+// applySeekFade sends the seek-fade switch to the player.
+func (a *app) applySeekFade() {
+	if a.player != nil {
+		a.player.SetSeekFade(a.settings.SeekFade)
 	}
 }
 
@@ -556,12 +580,7 @@ func (a *app) applySeek() {
 		a.player.SeekContext(ctx, at)
 		return at, nil
 	}, func(applied time.Duration, _ error) {
-		a.seekVersion++
-		if state := a.episodeProgress; state != nil {
-			state.lastReported, state.lastPosition, state.lastSample = applied, applied, time.Now()
-			state.seekVersion = a.seekVersion
-		}
-		a.syncSystemMedia()
+		a.noteSeek(applied)
 		if a.seekTarget != applied {
 			a.applySeek()
 		}

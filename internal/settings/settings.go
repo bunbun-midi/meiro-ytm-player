@@ -153,6 +153,14 @@ type Settings struct {
 	// MeasureSnap makes the measure-jump buttons land on the measure grid.
 	// Off, they add the measure's time to the current position.
 	MeasureSnap bool `json:"measureSnap,omitempty"`
+	// SeekFade fades the audio out and back in across a seek. Off, a seek
+	// cuts at the zero crossings nearest the current time and the landing.
+	SeekFade bool `json:"seekFade,omitempty"`
+	// WaveformPlaced is a waveform panel the listener has dragged.
+	// WaveformX and WaveformY are where its top left sits, in DIPs.
+	WaveformPlaced bool    `json:"waveformPlaced,omitempty"`
+	WaveformX      float64 `json:"waveformX,omitempty"`
+	WaveformY      float64 `json:"waveformY,omitempty"`
 	// TargetBPMOn sets the speed of each new track so the tempo at that
 	// speed matches TargetBPM. Off, the speed stays where it was left.
 	TargetBPMOn bool `json:"targetBPM,omitempty"`

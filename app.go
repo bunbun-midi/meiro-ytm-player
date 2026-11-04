@@ -100,6 +100,15 @@ type app struct {
 		open, placed, dragging bool
 		x, y                   float32
 	}
+	// wave is the floating waveform. span is how much of the track it shows,
+	// zero until a wheel zoom chooses one, and origin is the time at its left.
+	wave struct {
+		open, placed, dragging bool
+		x, y                   float32
+		span, origin           time.Duration
+		hover                  bool
+		hoverAt                time.Duration
+	}
 	// settingsSeen is the last settings.json content the watcher read, so it
 	// notices only a change it has not handled. watchSettings starts it, and
 	// then only the watcher's goroutine touches it.

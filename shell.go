@@ -59,6 +59,7 @@ func (a *app) view(c *ui.Context) {
 	})
 	a.reserveSpaceForPlayback(shell)
 	a.playbackPanelView(c)
+	a.waveformPanel(c)
 	a.signInDialog(c)
 	a.newPlaylistDialog(c)
 	a.deletePlaylistDialog(c)

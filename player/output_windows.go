@@ -730,18 +730,21 @@ func (d *wasapiDevice) remove(p *wasapiPlayer) {
 }
 
 type wasapiPlayer struct {
-	dev      *wasapiDevice
-	r        io.Reader
-	mu       sync.Mutex
-	cond     *sync.Cond
-	buf      []byte
-	volume   float64
-	playing  bool
-	paused   bool
-	quit     bool
-	eof      bool
-	err      error
-	readDone chan struct{}
+	dev         *wasapiDevice
+	r           io.Reader
+	mu          sync.Mutex
+	cond        *sync.Cond
+	buf         []byte
+	volume      float64
+	playing     bool
+	paused      bool
+	quit        bool
+	eof         bool
+	err         error
+	readDone    chan struct{}
+	gen         uint64
+	keep        bool
+	fadePending bool
 }
 
 func (p *wasapiPlayer) Play() {
@@ -764,18 +767,29 @@ func (p *wasapiPlayer) readLoop() {
 			p.cond.Wait()
 		}
 		quit := p.quit
+		p.keep = false
+		gen := p.gen
 		p.mu.Unlock()
 		if quit {
 			return
 		}
 		n, err := p.r.Read(scratch)
 		p.mu.Lock()
-		if n > 0 && !p.quit {
+		// A seek clears the queue from the UI thread and marks that
+		// generation. Bytes this read already held from before the seek
+		// are dropped. Bytes it produced after the seek, which Keep marks,
+		// stay, so the landing point is not skipped.
+		drop := p.gen != gen && !p.keep
+		if n > 0 && !p.quit && !drop {
+			if p.fadePending {
+				fadeInPCM(scratch[:n], seekFadeFrames)
+				p.fadePending = false
+			}
 			p.buf = append(p.buf, scratch[:n]...)
 		}
-		// No samples ready yet is a wait, not the end of the track. Ending
-		// the read here is a dropout.
-		if errors.Is(err, io.ErrNoProgress) && !p.quit {
+		// No samples ready yet is a wait, not the end of the track. A seek
+		// asking to be read again is the same. Ending the read here is a dropout.
+		if (errors.Is(err, io.ErrNoProgress) || errors.Is(err, errJumped)) && !p.quit {
 			p.mu.Unlock()
 			time.Sleep(2 * time.Millisecond)
 			continue
@@ -845,6 +859,44 @@ func (p *wasapiPlayer) Err() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.err
+}
+
+// Cut drops audio queued for the speakers down to the zero crossing nearest
+// the next sample. fade ramps that short tail out, and the audio that
+// arrives after it in.
+func (p *wasapiPlayer) Cut(fade bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	frames := len(p.buf) / frameBytes
+	keep := 0
+	if frames > 0 {
+		window := seekSnapFrames
+		if window > frames {
+			window = frames
+		}
+		keep = nearestZero(p.buf[:window*frameBytes], 0, window)
+		if fade && keep < seekFadeFrames {
+			keep = seekFadeFrames
+			if keep > frames {
+				keep = frames
+			}
+		}
+		if fade && keep > 0 {
+			fadeOutPCM(p.buf[:keep*frameBytes])
+		}
+	}
+	p.buf = p.buf[:keep*frameBytes]
+	p.gen++
+	p.fadePending = fade
+	p.cond.Broadcast()
+}
+
+// Keep marks the read in progress as audio from after the latest seek, so
+// the loop does not throw those samples away with the ones from before it.
+func (p *wasapiPlayer) Keep() {
+	p.mu.Lock()
+	p.keep = true
+	p.mu.Unlock()
 }
 
 // mix adds this player's next samples into acc, one int32 per channel.

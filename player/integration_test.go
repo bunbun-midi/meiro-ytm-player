@@ -105,6 +105,37 @@ func TestPauseHoldsAndResumeFinishes(t *testing.T) {
 	waitFor(t, "the resumed track to end", p.Ended)
 }
 
+func TestSeekInsideDecodedAudioDoesNotRestart(t *testing.T) {
+	p, wav := newTestPlayerWithDuration(t, 8)
+	if err := p.Play(wav); err != nil {
+		t.Fatal(err)
+	}
+	p.Pause()
+	waitFor(t, "four seconds to be decoded", func() bool {
+		return p.Waveform().End >= 4*time.Second
+	})
+	p.mu.Lock()
+	before := p.session
+	p.mu.Unlock()
+	start := time.Now()
+	p.Seek(3 * time.Second)
+	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
+		t.Fatalf("seeking decoded audio took %v", elapsed)
+	}
+	p.mu.Lock()
+	same := p.session == before
+	p.mu.Unlock()
+	if !same {
+		t.Fatal("the seek restarted the decode")
+	}
+	if got := p.Position(); got < 3*time.Second-50*time.Millisecond || got > 3*time.Second+50*time.Millisecond {
+		t.Fatalf("position after the seek = %v, want about 3s", got)
+	}
+	if !p.Paused() {
+		t.Fatal("seeking a paused stream resumed it")
+	}
+}
+
 func TestSeekRestartsTheDecodeAtThatPoint(t *testing.T) {
 	p, wav := newTestPlayer(t)
 	if err := p.Play(wav); err != nil {
