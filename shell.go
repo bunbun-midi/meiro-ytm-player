@@ -63,6 +63,8 @@ func (a *app) view(c *ui.Context) {
 	a.newPlaylistDialog(c)
 	a.deletePlaylistDialog(c)
 	a.addToPlaylistDialog(c)
+	a.saveQueueDialog(c)
+	a.songPlaylistDialog(c)
 	a.toolHelpDialog(c)
 	a.crashDialog(c)
 	m3.Snackbars(c, 0)

@@ -50,6 +50,9 @@ func (q *queue) mark() queueMark {
 		_, _ = h.Write([]byte(item.VideoID))
 		_, _ = h.Write([]byte{0})
 	}
+	for _, n := range q.hand {
+		_, _ = h.Write([]byte{byte(n), byte(n >> 8)})
+	}
 	return queueMark{h.Sum64(), q.index, q.recStart, q.playNext, q.source}
 }
 
@@ -57,7 +60,7 @@ func (q *queue) mark() queueMark {
 func (q *queue) state(position time.Duration) playstate.State {
 	return playstate.State{
 		Items: q.items, Index: q.index, RecStart: q.recStart,
-		PlayNext: q.playNext, Source: q.source, Position: position,
+		PlayNext: q.playNext, Hand: append([]int(nil), q.hand...), Source: q.source, Position: position,
 	}.Window()
 }
 
@@ -66,6 +69,10 @@ func (q *queue) restore(s playstate.State) {
 	*q = newQueue()
 	q.items = slices.Clone(s.Items)
 	q.index, q.recStart, q.playNext, q.source = s.Index, s.RecStart, s.PlayNext, s.Source
+	if len(s.Hand) == len(q.items) {
+		q.hand = slices.Clone(s.Hand)
+		q.compactHand()
+	}
 	q.regenerate()
 	for i := len(q.items) - 1; i > q.index; i-- {
 		item := q.items[i]

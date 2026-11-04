@@ -172,6 +172,38 @@ func Menu(c *ui.Context, anchor ui.Element, open *bool, width float32, build fun
 	}
 }
 
+// CompactMenu is a menu whose rows sit close together and whose width stays
+// near the labels.
+func CompactMenu(c *ui.Context, anchor ui.Element, open *bool, width float32, build func()) {
+	sc := Of(c).Scheme
+	wasOpen := *open
+	ui.PopoverBase(c, anchor, open, func(panel ui.Element) {
+		panel.Key(anchor.ID()).Width(width).Padding(2, 4).Radius(Large).Margin(4, 0, 0, 0).Background(sc.SurfaceContainerHigh).
+			TextColor(sc.OnSurface)
+		Elevation(c, panel, 3)
+		ui.Column(c).Gap(0).Role(ui.RoleMenu).Modal().FocusGroup(ui.Vertical).Children(build)
+	})
+	if wasOpen && !*open {
+		c.AnimationFrame()
+	}
+}
+
+// CompactMenuItem is a short menu entry. The label does not stretch, so the
+// row stays as wide as the menu and no wider.
+func CompactMenuItem(c *ui.Context, label string, icon *ui.SVG) ui.Element {
+	sc := Of(c).Scheme
+	b := ui.ButtonBase(c.Key("menu-" + label))
+	b.Height(26).PaddingX(8).Gap(6).AlignItems(ui.Center).Radius(Medium).Cursor(ui.CursorPointer).Label(label).Role(ui.RoleMenuItem).
+		Background(StateFill(ui.Transparent, sc.OnSurface, b.Hovered(), b.Pressed(), b.FocusVisible()))
+	b.Children(func() {
+		if icon != nil {
+			ui.Icon(c, icon).FontSize(16).TextColor(sc.OnSurfaceVariant)
+		}
+		ui.Text(c, label).FontSize(13).FixedLineHeight(16).SingleLine().TextColor(sc.OnSurface)
+	})
+	return b
+}
+
 // MenuItem is one entry of a menu.
 func MenuItem(c *ui.Context, label string, icon *ui.SVG) ui.Element {
 	sc := Of(c).Scheme

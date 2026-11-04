@@ -773,6 +773,13 @@ func (p *wasapiPlayer) readLoop() {
 		if n > 0 && !p.quit {
 			p.buf = append(p.buf, scratch[:n]...)
 		}
+		// No samples ready yet is a wait, not the end of the track. Ending
+		// the read here is a dropout.
+		if errors.Is(err, io.ErrNoProgress) && !p.quit {
+			p.mu.Unlock()
+			time.Sleep(2 * time.Millisecond)
+			continue
+		}
 		done := err != nil || p.quit
 		if err != nil && err != io.EOF && !errors.Is(err, io.ErrClosedPipe) && !errors.Is(err, io.ErrUnexpectedEOF) {
 			p.err = err

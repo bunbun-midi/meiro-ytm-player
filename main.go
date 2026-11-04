@@ -203,6 +203,8 @@ func (a *app) setup() {
 		a.openCredits(filepath.Join(directory, "credits.json"))
 		a.dataDir = directory
 		a.openDownloads(a.downloadFolder())
+		a.localLists.path = filepath.Join(directory, "playlists.json")
+		a.localLists.load()
 	} else {
 		a.account.signIn.err = err.Error()
 	}

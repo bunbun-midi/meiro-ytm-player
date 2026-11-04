@@ -222,7 +222,8 @@ func (f *pcmFan) compact() {
 // frame. Both read one fan of the decoded PCM, and both run for the whole
 // track: starting the second one later would miss the samples the first had
 // already taken, and stopping it would let it drift. Silence is a gain of
-// zero, not a reader standing still.
+// zero. While that gain is zero the second voice is held at 0 st, so its
+// stretcher is not added to the sound the listener hears.
 type voiceMix struct {
 	main *rateReader
 	oct  *rateReader
@@ -294,6 +295,11 @@ func (m *voiceMix) Read(p []byte) (int, error) {
 		return 0, nil
 	}
 	n := len(p) - len(p)%frameBytes
+	_, wantOct := m.gains()
+	// A silent second voice stays at the recording's pitch. Its samples are
+	// multiplied by zero, and keeping it out of the stretcher means a
+	// glitch there cannot reach the mix.
+	m.oct.flatPitch = wantOct == 0 && m.octG < 1e-6
 	errMain := m.mainQ.fill(m.main, n, m.scratch[:])
 	errOct := m.octQ.fill(m.oct, n, m.scratch[:])
 	have := min(m.mainQ.buffered(), m.octQ.buffered())
@@ -323,13 +329,19 @@ func (m *voiceMix) Read(p []byte) (int, error) {
 	return have, nil
 }
 
-func (m *voiceMix) mix(dst, main, oct []byte) {
+// gains is how loud each voice should be for the fader position published
+// most recently.
+func (m *voiceMix) gains() (main, oct float64) {
 	live := m.live.Load()
 	fade, cross := 0.0, false
 	if live != nil {
 		fade, cross = live.fade, live.crossfade
 	}
-	wantMain, wantOct := voiceGains(fade, cross)
+	return voiceGains(fade, cross)
+}
+
+func (m *voiceMix) mix(dst, main, oct []byte) {
+	wantMain, wantOct := m.gains()
 	if !m.ready {
 		m.mainG, m.octG = wantMain, wantOct
 		m.ready = true

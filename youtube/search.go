@@ -57,7 +57,7 @@ func (c *Client) Search(ctx context.Context, query string, options SearchOptions
 	if err != nil {
 		return nil, err
 	}
-	return c.newSearchResult(raw), nil
+	return c.finishSearch(ctx, raw)
 }
 
 // ContinueSearch requests the next page from SearchResult.ContinuationToken.
@@ -69,7 +69,29 @@ func (c *Client) ContinueSearch(ctx context.Context, token string) (*SearchResul
 	if err != nil {
 		return nil, err
 	}
-	return c.newSearchResult(raw), nil
+	return c.finishSearch(ctx, raw)
+}
+
+// finishSearch reads a search response and follows a playlists shelf that
+// only previewed its contents, so the results hold every playlist from it.
+func (c *Client) finishSearch(ctx context.Context, raw json.RawMessage) (*SearchResult, error) {
+	root := decodeResponse(raw)
+	items, sections, top := browseParts(root, true)
+	drained := map[string]struct{}{}
+	for i := range sections {
+		extra, token, err := c.expandPlaylistShelf(ctx, &sections[i], true)
+		if err != nil || len(extra) == 0 {
+			continue
+		}
+		items = appendNewItems(items, extra)
+		if token != "" {
+			drained[token] = struct{}{}
+		}
+	}
+	return &SearchResult{
+		Items: items, TopResult: top, Filters: searchFilters(root),
+		ContinuationToken: firstContinuation(root, drained),
+	}, nil
 }
 
 // GetSearchSuggestions returns what YouTube Music offers for a query being

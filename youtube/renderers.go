@@ -47,13 +47,15 @@ func browseParts(root any, search bool) ([]MusicItem, []MusicSection, MusicItem)
 			}
 		case *jsonObject:
 			for _, member := range node.members {
-				if section == nil && !search && isSectionRenderer(member.key) {
+				if section == nil && isSectionRenderer(member.key) {
 					if renderer, ok := member.value.(*jsonObject); ok {
 						current := &sectionItems{seen: make(map[itemIdentity]struct{})}
 						walk(renderer, current)
+						moreID, moreParams := shelfMoreTarget(renderer)
 						sections = append(sections, MusicSection{
 							Title: rendererTitle(renderer), Kind: member.key,
 							Items: current.items, ContinuationToken: continuationToken(renderer),
+							MoreBrowseID: moreID, MoreParams: moreParams,
 						})
 						continue
 					}

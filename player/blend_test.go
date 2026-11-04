@@ -74,6 +74,18 @@ func TestTwoPitchesStayInStep(t *testing.T) {
 	}
 }
 
+func TestNormalMixIsTheRecording(t *testing.T) {
+	src := sinePCM(440, 200*time.Millisecond)
+	for i := 0; i < len(src); i += frameBytes {
+		src[i+2], src[i+3] = 0, 0
+	}
+	mix := newVoiceMix(bytes.NewReader(append([]byte(nil), src...)), 1, 0, StretchBungee, Blend{Rel: 12, Fade: 0})
+	got := readAll(t, mix)
+	if !bytes.Equal(got, src) {
+		t.Fatalf("a closed second voice changed the recording: %d vs %d", len(got), len(src))
+	}
+}
+
 func TestMainVoiceIsUnchangedWhenTheSecondIsSilent(t *testing.T) {
 	src := sinePCM(440, 300*time.Millisecond)
 	plain := readAll(t, paced(bytes.NewReader(append([]byte(nil), src...)), 1, -7))

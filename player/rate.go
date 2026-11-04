@@ -111,7 +111,9 @@ type rateSpans struct {
 // stretch. To play higher, the stretch runs longer and the resampler reads
 // it faster, which brings the length back; lower is the other way around.
 // One output frame is one input frame of the resampler, so the pitch change
-// does not play a second, delayed copy. At unity each stretch is transparent.
+// does not play a second, delayed copy. At 1× and 0 st the samples are
+// copied through: the stretch is not transparent, so it stays out of the
+// sound until the speed or the pitch actually leaves that.
 type rateReader struct {
 	src io.Reader
 	ctl *rateControl
@@ -158,6 +160,14 @@ type rateReader struct {
 
 	// b is the Bungee Basic stretcher. The audio thread owns it.
 	b bungee
+
+	// copying is the straight copy used at 1× and 0 st. copyPos is the next
+	// source frame to hand on. flatPitch forces this voice to 0 st, which
+	// is how a silent second voice stays out of the stretcher. The audio
+	// thread owns both.
+	copying   bool
+	copyPos   int64
+	flatPitch bool
 }
 
 func newRateReader(src io.Reader, ctl *rateControl) *rateReader {
@@ -213,16 +223,111 @@ func (r *rateReader) Read(p []byte) (int, error) {
 	frames := len(p) / frameBytes
 	n := 0
 	for n < frames {
-		if err := r.ensure(); err != nil {
-			if n > 0 {
-				return n * frameBytes, nil
+		speed, pitch, _ := r.heard()
+		if unityPlayback(speed, pitch) {
+			if !r.copying {
+				r.enterCopy()
 			}
-			return 0, err
+			if err := r.copyOne(p[n*frameBytes:]); err != nil {
+				if n > 0 {
+					return n * frameBytes, nil
+				}
+				return 0, err
+			}
+		} else {
+			if r.copying {
+				r.leaveCopy()
+			}
+			if err := r.ensure(); err != nil {
+				if n > 0 {
+					return n * frameBytes, nil
+				}
+				return 0, err
+			}
+			r.emit(p[n*frameBytes:])
 		}
-		r.emit(p[n*frameBytes:])
 		n++
 	}
 	return n * frameBytes, nil
+}
+
+// heard is the speed and pitch this voice should play now. A silent second
+// voice reports 0 st so it copies, or stretches without a second pitch.
+func (r *rateReader) heard() (speed, pitch float64, stretch Stretch) {
+	speed, pitch, stretch = r.ctl.get()
+	if r.flatPitch {
+		pitch = 0
+	}
+	return speed, pitch, stretch
+}
+
+// unityPlayback reports a speed and pitch the ear cannot tell from the
+// recording, which is the case the straight copy handles.
+func unityPlayback(speed, pitch float64) bool {
+	return math.Abs(speed-1) < 1e-4 && math.Abs(pitch) < 1e-4
+}
+
+// enterCopy resumes at the source frame the listener is on.
+func (r *rateReader) enterCopy() {
+	r.copying = true
+	r.ratio = 1
+	r.stretch = 1
+	if r.emitted == 0 {
+		r.copyPos = 0
+		return
+	}
+	src := r.inPos
+	if at := r.sourceAt(r.emitted); at > 0 {
+		src = at
+	}
+	r.copyPos = int64(math.Round(src))
+	if r.copyPos < r.origin {
+		r.copyPos = r.origin
+	}
+}
+
+// leaveCopy starts the stretcher at the frame the copy had reached, so
+// moving the speed or the pitch does not jump back to the start.
+func (r *rateReader) leaveCopy() {
+	pos := float64(r.copyPos)
+	r.copying = false
+	r.inPos = pos
+	r.prevIn = pos
+	r.grainAt = r.emitted
+	r.olaPos = float64(r.emitted)
+	r.ola = nil
+	r.olaOrigin = r.emitted
+	r.olaEnd = r.emitted
+	r.b.reset()
+	r.b.pos = pos
+	r.pvHave = false
+	r.pvCopied = false
+	r.pvHa = 0
+	r.draining = false
+}
+
+// copyOne writes the next source frame unchanged.
+func (r *rateReader) copyOne(dst []byte) error {
+	if err := r.fill(r.copyPos + 1); err != nil {
+		return err
+	}
+	rel := int(r.copyPos - r.origin)
+	if rel < 0 || rel >= len(r.frames) {
+		if r.eof {
+			return io.EOF
+		}
+		return io.ErrNoProgress
+	}
+	sample := r.frames[rel]
+	putFrame(dst, sample[0], sample[1])
+	r.noteSpan(r.emitted, float64(r.copyPos), 1)
+	r.copyPos++
+	r.emitted++
+	r.inPos = float64(r.copyPos)
+	// Keep a window behind the play head so leaving the copy can stretch
+	// from here instead of from silence.
+	r.dropInput(bungeeN/2 + 8)
+	return nil
 }
 
 // ensure has the next output sample's overlap-add frames ready, or reports
@@ -278,7 +383,7 @@ func (r *rateReader) sampleReady() bool {
 // placed before its samples are handed on, so the overlap with the grain
 // before it is already mixed in.
 func (r *rateReader) placeGrain() error {
-	speed, pitch, algo := r.ctl.get()
+	speed, pitch, algo := r.heard()
 	speed = clampSpeed(speed)
 	target := pitchRatio(pitch)
 	if r.emitted == 0 || r.ratio == 0 {
@@ -564,7 +669,7 @@ func (r *rateReader) dropOutput() {
 }
 
 func (r *rateReader) emit(dst []byte) {
-	speed, pitch, _ := r.ctl.get()
+	speed, pitch, _ := r.heard()
 	speed = clampSpeed(speed)
 	target := pitchRatio(pitch)
 	if r.emitted == 0 || r.ratio == 0 {

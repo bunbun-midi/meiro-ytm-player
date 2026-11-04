@@ -12,9 +12,9 @@ A user opens the pages in the rail, follows an item into an album, playlist or a
 
 ## How to get to it (user POV)
 
-- Click `Home`, `Explore`, `Library` or `Settings` in the rail. The rail stays compact. `Expand navigation` opens the queue beside it, and that queue stays while those pages change. `Resize playlist` is its right edge. A row shows the artist, the title, the length and the album on one line. The artist, the title and the album can be clicked. The length cannot. Drag a row to reorder the queue; Up Next follows. Right-click a row and choose `Play` or `Download`. A downloaded title uses the theme colour. `Playback`, above `Settings`, opens the playback panel.
+- Click `Home`, `Explore`, `Library` or `Settings` in the rail. The rail stays compact. `Expand navigation` opens the queue beside it, and that queue stays while those pages change. `Resize playlist` is its right edge. A row shows the artist, the title, the length and the album on one line. The artist, the title and the album can be clicked. The length cannot. Drag a row to reorder the queue; Up Next follows. Right-click a row and choose `Play` or `Download`. Under those, `All To Playlist` names the whole queue and saves it on this computer, and `Song to Playlist` adds that song to one already saved: type to narrow the names, then choose one. A downloaded title uses the theme colour. `Playlists`, under `Library`, lists those playlists. Click one to see its songs. Right-click it and choose `Add Next`, `Add to Queue` or `Replace List`. `Remove` deletes it from this computer. `Playback`, above `Settings`, opens the playback panel.
 - Press `Cmd+1`, `Cmd+2`, `Cmd+3` or `Cmd+,`.
-- Click an album, playlist or artist card on any page.
+- Click an album, playlist or artist card on any page. An artist page lists every playlist, not only the first row, and the page scrolls through them. On Playlists, click a saved playlist to open it and click it again to close it. The open list scrolls through every song.
 - Open a `meiro://` link (see [native-only.md](./native-only.md)).
 
 ## Driving it with the headless tester
@@ -34,6 +34,7 @@ Preconditions:
 ## Gotchas
 
 - `/library` and `/recap` need `signedInApp(t)`. Signed out they show a sign-in prompt, which is also worth a screenshot.
+- `Playlists` needs no account. A tester that clicks the rail entry can draw that page blank while the text tree is right. Open a new tester after `a.router.Push("/playlists")` to capture it. A saved song's label is `Saved` plus its title. The page is a list, so a song past the bottom of the window is found only after scrolling. Click the playlist name to close it, and click again to open it.
 - Compare the heading, not the path. A route that failed to match draws the `Not found` page at a valid-looking path.
 - `a.router.Push` is the test's shortcut for navigation. Also click one real entry point per proof.
 - Current album responses put `musicResponsiveHeaderRenderer` in the primary tab's section list. Its `thumbnail` is the album cover; `straplineThumbnail` is an artist portrait. Never fill missing page art from tracks or related albums.

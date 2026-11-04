@@ -81,12 +81,19 @@ type app struct {
 	sideQueueList   ui.ListState
 	sideQueueFollow string
 	sideQueueSizing bool
-	// sideMenu is the Play and Download menu of one row of that queue.
+	// sideMenu is the Play, Download and playlist menu of one row of that queue.
 	sideMenu struct {
 		open  bool
 		index int
 		key   string
 	}
+	// localLists is the playlists kept on this computer. saveQueue and
+	// songPlaylist are the dialogs that write one, and nil while closed.
+	localLists   localPlaylists
+	saveQueue    *saveQueueState
+	songPlaylist *songPlaylistState
+	// urlOpen resolves a YouTube link pasted into the search bar.
+	urlOpen task
 	// playbackPanel is the Playback window opened from the rail, or detached
 	// from the speed button. placed is a position the listener has chosen.
 	playbackPanel struct {

@@ -21,6 +21,7 @@ const (
 	routeHome
 	routeExplore
 	routeLibrary
+	routePlaylists
 	routeDownloads
 	routeSearch
 	routeSettings
@@ -146,6 +147,11 @@ func appRoutes() []route {
 				return c.StreamLibrary(ctx, nil)
 			},
 			needsAccount: &signInPrompt{m3.IconLibraryFilled, "Your library lives here", "Sign in to see your songs, albums and playlists.", "your songs, albums and playlists"},
+		},
+		{
+			// Playlists saved on this computer, not the ones on the account.
+			id: routePlaylists, pattern: "/playlists", title: "Playlists", rail: &railEntry{label: "Playlists", icon: m3.IconPlaylist, filled: m3.IconPlaylist}, heading: heading("Playlists"), nav: routePlaylists, source: "Playlists", bare: true,
+			view: (*app).localPlaylistsPage,
 		},
 		{
 			// Downloads are read from disk, not loaded: the page works offline.

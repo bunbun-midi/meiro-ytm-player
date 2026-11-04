@@ -1207,6 +1207,11 @@ func (c *countingReader) Read(p []byte) (int, error) {
 	n, err := c.reader.Read(p)
 	c.read.Add(int64(n))
 	if err != nil {
+		// The stretch asks again when the next samples are not here yet.
+		// That is not the end of the track.
+		if errors.Is(err, io.ErrNoProgress) {
+			return n, err
+		}
 		if errors.Is(err, io.EOF) {
 			c.eof.Store(true)
 		}

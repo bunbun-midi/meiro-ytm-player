@@ -82,6 +82,10 @@ type MusicSection struct {
 	Kind              string      `json:"kind"`
 	Items             []MusicItem `json:"items"`
 	ContinuationToken string      `json:"continuationToken,omitempty"`
+	// MoreBrowseID and MoreParams open the rest of a shelf when the shelf
+	// itself only carries a preview, as an artist's playlists do.
+	MoreBrowseID string `json:"moreBrowseId,omitempty"`
+	MoreParams   string `json:"moreParams,omitempty"`
 }
 
 func (c *Client) GetHomeFeed(ctx context.Context) (*BrowseResult, error) {
@@ -237,7 +241,21 @@ func (c *Client) GetArtist(ctx context.Context, artistID string) (*BrowseResult,
 	if !strings.HasPrefix(artistID, "UC") && !strings.HasPrefix(artistID, "FEmusic_library_privately_owned_artist") {
 		return nil, fmt.Errorf("youtube: invalid artist ID %q", artistID)
 	}
-	return c.browse(ctx, artistID)
+	result, err := c.browse(ctx, artistID)
+	if err != nil {
+		return nil, err
+	}
+	// The page leads with a short row of playlists. The rest are a browse of
+	// their own, and the page shows those too.
+	for i := range result.Sections {
+		extra, _, err := c.expandPlaylistShelf(ctx, &result.Sections[i], false)
+		if err != nil || len(extra) == 0 {
+			continue
+		}
+		result.Sections[i].Items = appendNewItems(result.Sections[i].Items, extra)
+		result.Sections[i].ContinuationToken = ""
+	}
+	return result, nil
 }
 
 func (c *Client) GetAlbum(ctx context.Context, albumID string) (*BrowseResult, error) {
@@ -409,7 +427,17 @@ func continuationToken(root any) string {
 }
 
 func (c *Client) browse(ctx context.Context, browseID string) (*BrowseResult, error) {
-	raw, err := c.execute(ctx, "browse", map[string]any{"browseId": browseID})
+	return c.browseWith(ctx, browseID, "")
+}
+
+// browseWith reads a browse page. params is what a shelf's more button
+// carries when the shelf is only a preview of that page.
+func (c *Client) browseWith(ctx context.Context, browseID, params string) (*BrowseResult, error) {
+	payload := map[string]any{"browseId": browseID}
+	if params != "" {
+		payload["params"] = params
+	}
+	raw, err := c.execute(ctx, "browse", payload)
 	if err != nil {
 		return nil, err
 	}

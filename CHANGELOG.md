@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Save a playlist on this computer.** Playlists, under Library, lists them. Right-click the queue beside the rail and choose All To Playlist to name that queue, or Song to Playlist and type a name to add the song. On Playlists, click a playlist to open or close it, and right-click it to choose Add Next, Add to Queue or Replace List. A playlist can be removed from that page.
+- **Queue a track without moving it.** Right-click the queue beside the rail and choose Queue Next or Queue Last. The list stays as it is. A blue number, such as [1], sits beside each track you queued, in the order those tracks will play. That menu's rows sit closer together, with less space after the labels.
+- **Open a YouTube Music link from search.** Pasting a link to a song, album, playlist, artist, podcast or channel into the search bar opens it. A channel handle is opened too.
 - **Reorder the queue beside the navigation rail.** Drag a track to move it. Up Next follows. Right-click a track there to play it or download it. A downloaded track's title is drawn in the theme's own colour.
 - **Open Playback from the rail.** The button above Settings opens the playback panel, and the panel can be dragged anywhere. Detach on the speed button's panel does the same.
 - **Blend a second pitch.** The playback panel adds a copy of the track, an octave above the pitch slider unless another interval is chosen. The fader brings that copy in from the right. Crossfade trades the main voice for it; otherwise the main voice stays at full volume. A spectrum, a level meter and a compressor sit with the fader so the two together stay under full scale.
@@ -27,12 +30,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- **The navigation rail stays compact.** Its menu button opens the queue beside it, on Home, Search, Explore, Library and Downloads. Each row is the artist, the title, the length and the album, and the queue's right edge sets how wide it is.
+- **The navigation rail stays compact.** Its menu button opens the queue beside it, on Home, Search, Explore, Library, Playlists and Downloads. Each row is the artist, the title, the length and the album, and the queue's right edge sets how wide it is.
 - **The speed slider uses Bungee.** Settings → Sound → Time stretch can switch it to the phase vocoder or to overlap-add, and the change applies while a track is playing.
 - **Playback speed is a slider.** It runs from 0.05× to 1.8× in steps of 0.001, in the player bar, the full player and the tray's mini player. Dragging the speed or the pitch changes the sound straight away, and the track keeps playing through it. Dragging the speed slider past either end keeps changing the speed at the same rate, down to 0.01× or up to 4×. The pitch stays put when only the speed moves. Songs and podcasts still remember their own speed.
 
 ### Fixed
 
+- **Normal speed and pitch play the recording as it is.** The time-stretch stays out of the sound until the speed or the pitch moves, and a silent second voice is not passed through it either. A moment with no samples ready no longer stops the track.
+- **A saved playlist shows every song.** Opening one on Playlists lists the whole playlist, and the list scrolls to the end of it. Click the name to close it, and click again to open it.
+- **An artist's playlists are the whole set.** The page lists every playlist, including the ones past the first row. A search does the same for a playlists shelf.
 - **BPM detection keeps one tempo for the whole track.** The measure marks follow the steadiest part of the song, stay on the beat later in the track, and no longer flip between half time and double time.
 - **Track notifications show the album cover.** The picture beside the song name is the cover of the track that just started.
 - **Moving across album covers keeps the cursor smooth.** The pointer can travel over a cover, a title and a song row without the window rebuilding on the way, and a cover is left as it was while the play button appears. A right click still opens the cover's menu.

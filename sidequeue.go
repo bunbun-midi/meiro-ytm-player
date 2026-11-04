@@ -23,6 +23,15 @@ const (
 	sideQueueClip = "\u200b"
 )
 
+// handMarkColor is the blue of a manual-queue number. A lighter blue is
+// used on a dark surface so the number stays readable.
+func handMarkColor(c *ui.Context) ui.Color {
+	if c.Theme().Dark {
+		return ui.Hex("#8AB4F8")
+	}
+	return ui.Hex("#1A73E8")
+}
+
 // sideQueueWidth is how wide the queue beside the rail is drawn.
 func (a *app) sideQueueWidth() float32 {
 	w := a.settings.SideQueueWidth
@@ -151,8 +160,12 @@ func (a *app) sideQueueTitle(c *ui.Context, item youtube.MusicItem, index int, c
 		title = "Unknown track"
 	}
 	b := ui.ButtonBase(c.Key("side-title-" + strconv.Itoa(index))).Grow(1).Basis(0).MinWidth(0).
-		Height(sideQueueRow).Clip().Cursor(ui.CursorPointer).Label(title)
+		Height(sideQueueRow).Gap(4).Clip().Cursor(ui.CursorPointer).Label(title)
 	b.Children(func() {
+		if n := a.queue.handAt(index); n > 0 {
+			ui.Text(c, "["+strconv.Itoa(n)+"]").Shrink(0).FontSize(sideQueueFont).FixedLineHeight(sideQueueLine).
+				SingleLine().TextColor(handMarkColor(c)).PassThrough()
+		}
 		text := ui.Text(c, title).FontSize(sideQueueFont).FixedLineHeight(sideQueueLine).
 			SingleLine().Ellipsis(sideQueueClip).Grow(1).MinWidth(0).TextColor(colour).PassThrough()
 		if index == a.queue.index {
@@ -198,13 +211,14 @@ func (a *app) sideQueuePlain(c *ui.Context, text string, colour ui.Color) {
 		SingleLine().Ellipsis(sideQueueClip).TextColor(colour)
 }
 
-// offerSideMenu opens Play and Download when the secondary button hits
-// this part of the row. The menu is anchored to that part.
+// offerSideMenu opens Play, Download and the playlist actions when the
+// secondary button hits this part of the row. The menu is anchored to that part.
 func (a *app) offerSideMenu(c *ui.Context, e ui.Element, index int, key string) {
 	if e.RightClicked() {
 		a.sideMenu.open = true
 		a.sideMenu.index = index
 		a.sideMenu.key = key
+		a.localLists.menu.open = false
 	}
 	if !a.sideMenu.open || a.sideMenu.index != index || a.sideMenu.key != key {
 		return
@@ -214,8 +228,8 @@ func (a *app) offerSideMenu(c *ui.Context, e ui.Element, index int, key string) 
 		return
 	}
 	item := a.queue.at(index)
-	m3.Menu(c, e, &a.sideMenu.open, 200, func() {
-		if m3.MenuItem(c, "Play", m3.IconPlay).Label("Play track").Clicked() {
+	m3.CompactMenu(c, e, &a.sideMenu.open, 188, func() {
+		if m3.CompactMenuItem(c, "Play", m3.IconPlay).Label("Play track").Clicked() {
 			a.sideMenu.open = false
 			if index == a.queue.index && item.VideoID == a.current.VideoID {
 				a.togglePlay()
@@ -225,14 +239,36 @@ func (a *app) offerSideMenu(c *ui.Context, e ui.Element, index int, key string) 
 		}
 		switch {
 		case a.isDownloaded(item.VideoID):
-			if m3.MenuItem(c, "Downloaded", m3.IconDownloadDone).Clicked() {
+			if m3.CompactMenuItem(c, "Downloaded", m3.IconDownloadDone).Clicked() {
 				a.sideMenu.open = false
 			}
 		case a.canDownload(item):
-			if m3.MenuItem(c, "Download", m3.IconDownload).Clicked() {
+			if m3.CompactMenuItem(c, "Download", m3.IconDownload).Clicked() {
 				a.sideMenu.open = false
 				a.downloadSong(item)
 			}
+		}
+		if m3.CompactMenuItem(c, "Queue Next", m3.IconNext).Clicked() {
+			a.sideMenu.open = false
+			if a.queue.queueNext(index) {
+				a.notice = "“" + songTitle(item) + "” will play next"
+				a.queueChanged()
+			}
+		}
+		if m3.CompactMenuItem(c, "Queue Last", m3.IconQueue).Clicked() {
+			a.sideMenu.open = false
+			if a.queue.queueLast(index) {
+				a.notice = "“" + songTitle(item) + "” was queued last"
+				a.queueChanged()
+			}
+		}
+		if m3.CompactMenuItem(c, "All To Playlist", m3.IconPlaylist).Clicked() {
+			a.sideMenu.open = false
+			a.openSaveQueue()
+		}
+		if m3.CompactMenuItem(c, "Song to Playlist", m3.IconAdd).Clicked() {
+			a.sideMenu.open = false
+			a.openSongToPlaylist(item)
 		}
 	})
 }

@@ -93,13 +93,52 @@ func (a *app) runSearch(query, params string) {
 // runSearchFrom runs a search from wherever the user is: submitting the search
 // bar shows the search page with what it ran.
 func (a *app) runSearchFrom(query string) {
-	if strings.TrimSpace(query) == "" {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return
+	}
+	if target, resolve, ok := youtube.ParseMusicURL(query); ok {
+		a.cancelSuggestions()
+		a.settings.Remember(query)
+		a.saveSettings()
+		a.openMusicURL(target, resolve)
 		return
 	}
 	if r, _ := a.route(); r.id != routeSearch {
 		a.navigate(routeSearch)
 	}
 	a.runSearch(query, "")
+}
+
+// openMusicURL opens a link pasted into the search bar: a video plays, and a
+// playlist, album, artist or podcast opens its page. A handle is asked of
+// YouTube, which is what names the channel.
+func (a *app) openMusicURL(target youtube.Target, resolve string) {
+	if target.Kind == youtube.TargetTrack && target.ID != "" {
+		a.playVideoID(target.ID)
+		return
+	}
+	if target.Opens() {
+		a.openTarget(target, detail{})
+		return
+	}
+	if resolve == "" {
+		return
+	}
+	client := a.client()
+	startTask(a, &a.urlOpen, searchTimeout, func(ctx context.Context) (youtube.Target, error) {
+		return client.ResolveURL(ctx, resolve)
+	}, func(target youtube.Target, err error) {
+		if err != nil || target.ID == "" {
+			a.notice = "That link could not be opened"
+			return
+		}
+		if target.Kind == youtube.TargetTrack {
+			a.playVideoID(target.ID)
+			return
+		}
+		a.openTarget(target, detail{})
+	})
 }
 
 // suggestSearches asks YouTube Music what it offers for the text being typed

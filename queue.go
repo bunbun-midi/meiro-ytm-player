@@ -30,6 +30,11 @@ type queue struct {
 	// playNext is the track the user asked to play next, which plays before
 	// the rest even after the queue is reordered.
 	playNext string
+	// hand is the manual queue. A track keeps its place in the list; a
+	// positive number is the order it was asked to play in, and 1 plays
+	// next. The slice is nil when nothing is queued that way, and otherwise
+	// one entry per track.
+	hand []int
 	// shuffleKept is the order the queue held before it was arranged, so
 	// that turning shuffle off puts it back. It is empty when the queue is
 	// not arranged.
@@ -70,10 +75,13 @@ func (q *queue) remaining() int { return len(q.items) - q.index - 1 }
 // replace makes the queue tracks, chosen from source, with item at its
 // place: index when that is where item is, or else wherever item first is.
 // A queue without item in it holds item alone. Generated tracks and the
-// play-next mark of the queue before are dropped.
+// play-next mark of the queue before are dropped. The manual queue stays
+// when the tracks are the same list in the same order, and the track that
+// starts playing leaves it.
 func (q *queue) replace(item youtube.MusicItem, tracks []youtube.MusicItem, index int, source string) {
 	// The page that offered tracks rebuilds its own list on every frame, so
 	// the queue must not share its backing array.
+	kept, before := q.hand, q.items
 	*q = newQueue()
 	q.items, q.source = slices.Clone(tracks), source
 	if index < 0 || index >= len(q.items) || q.items[index].VideoID != item.VideoID {
@@ -83,6 +91,24 @@ func (q *queue) replace(item youtube.MusicItem, tracks []youtube.MusicItem, inde
 		q.items, index = []youtube.MusicItem{item}, 0
 	}
 	q.index = index
+	if len(kept) == len(before) && sameVideoIDs(before, q.items) {
+		q.hand = append([]int(nil), kept...)
+		q.consumeHand(q.index)
+	}
+}
+
+// sameVideoIDs reports whether the two lists are the same tracks in the same
+// order. An empty video ID never matches.
+func sameVideoIDs(a, b []youtube.MusicItem) bool {
+	if len(a) != len(b) || len(a) == 0 {
+		return false
+	}
+	for i := range a {
+		if a[i].VideoID == "" || a[i].VideoID != b[i].VideoID {
+			return false
+		}
+	}
+	return true
 }
 
 // limit is the end of what may play: the whole queue, or only the chosen
@@ -97,6 +123,9 @@ func (q *queue) limit(autoPlay bool) int {
 // next is the place of the track that follows the current one, and false
 // when the queue is over.
 func (q *queue) next(autoPlay bool, repeat repeatMode) (int, bool) {
+	if i, ok := q.handNext(false); ok {
+		return i, true
+	}
 	if q.playNext != "" {
 		for i := max(q.index+1, 0); i < len(q.items); i++ {
 			if q.items[i].VideoID == q.playNext {
@@ -119,6 +148,9 @@ func (q *queue) next(autoPlay bool, repeat repeatMode) (int, bool) {
 // nextEligible chooses the same order as next, passing over known dislikes.
 // Each position is considered at most once, including when the queue repeats.
 func (q *queue) nextEligible(autoPlay bool, repeat repeatMode, skipDisliked bool) (int, bool) {
+	if i, ok := q.handNext(skipDisliked); ok {
+		return i, true
+	}
 	if !skipDisliked {
 		return q.next(autoPlay, repeat)
 	}
@@ -151,10 +183,176 @@ func (q *queue) nextEligible(autoPlay bool, repeat repeatMode, skipDisliked bool
 // moveTo makes the track at index the current one.
 func (q *queue) moveTo(index int) youtube.MusicItem {
 	q.index = index
+	q.consumeHand(index)
 	if q.items[index].VideoID == q.playNext {
 		q.playNext = ""
 	}
 	return q.items[index]
+}
+
+// handAt is the manual-queue number of the track at index, or 0 when it is
+// not queued that way.
+func (q *queue) handAt(index int) int {
+	if index < 0 || index >= len(q.hand) {
+		return 0
+	}
+	return q.hand[index]
+}
+
+// queueNext marks the track at index to play next. Tracks already marked
+// move back one, and the list order stays. The track that is playing is
+// left as it is.
+func (q *queue) queueNext(index int) bool {
+	if !q.canHand(index) {
+		return false
+	}
+	q.ensureHand()
+	if q.hand[index] > 0 {
+		q.consumeHand(index)
+	}
+	for i, n := range q.hand {
+		if n > 0 {
+			q.hand[i] = n + 1
+		}
+	}
+	q.hand[index] = 1
+	return true
+}
+
+// queueLast marks the track at index to play after the other marked tracks.
+// The list order stays. The track that is playing is left as it is.
+func (q *queue) queueLast(index int) bool {
+	if !q.canHand(index) {
+		return false
+	}
+	q.ensureHand()
+	if q.hand[index] > 0 {
+		q.consumeHand(index)
+	}
+	maxN := 0
+	for _, n := range q.hand {
+		if n > maxN {
+			maxN = n
+		}
+	}
+	q.hand[index] = maxN + 1
+	return true
+}
+
+// canHand reports whether index is a track that can join the manual queue.
+func (q *queue) canHand(index int) bool {
+	return index >= 0 && index < len(q.items) && index != q.index && q.items[index].VideoID != ""
+}
+
+// ensureHand makes hand one entry per track, keeping numbers already stored.
+func (q *queue) ensureHand() {
+	if len(q.hand) == len(q.items) {
+		return
+	}
+	next := make([]int, len(q.items))
+	copy(next, q.hand)
+	q.hand = next
+}
+
+// handNext is the place of the lowest manual-queue number, and false when
+// none remains. A disliked track is passed over when skipDisliked is set.
+func (q *queue) handNext(skipDisliked bool) (int, bool) {
+	best, at := 0, -1
+	for i, n := range q.hand {
+		if n <= 0 || i == q.index || i >= len(q.items) {
+			continue
+		}
+		if skipDisliked && q.items[i].Like == youtube.Disliked {
+			continue
+		}
+		if at < 0 || n < best {
+			best, at = n, i
+		}
+	}
+	if at < 0 {
+		return 0, false
+	}
+	return at, true
+}
+
+// consumeHand drops the manual-queue number at index and closes the gap.
+func (q *queue) consumeHand(index int) {
+	if index < 0 || index >= len(q.hand) || q.hand[index] <= 0 {
+		return
+	}
+	n := q.hand[index]
+	q.hand[index] = 0
+	for i, v := range q.hand {
+		if v > n {
+			q.hand[i]--
+		}
+	}
+	q.dropEmptyHand()
+}
+
+// dropEmptyHand forgets the manual queue when every number is clear.
+func (q *queue) dropEmptyHand() {
+	for _, n := range q.hand {
+		if n > 0 {
+			return
+		}
+	}
+	q.hand = nil
+}
+
+// compactHand renumbers the manual queue from 1 with no gaps.
+func (q *queue) compactHand() {
+	if len(q.hand) == 0 {
+		return
+	}
+	type place struct{ n, i int }
+	ps := make([]place, 0, len(q.hand))
+	for i, n := range q.hand {
+		if n > 0 {
+			ps = append(ps, place{n, i})
+		}
+	}
+	slices.SortFunc(ps, func(a, b place) int { return a.n - b.n })
+	for rank, p := range ps {
+		q.hand[p.i] = rank + 1
+	}
+	q.dropEmptyHand()
+}
+
+// insertHand opens count empty places in the manual queue at position.
+// It forgets a queue that no longer lines up with the tracks.
+func (q *queue) insertHand(position, count int) {
+	if q.hand == nil || count <= 0 {
+		return
+	}
+	if len(q.hand) != len(q.items)-count {
+		q.hand = nil
+		return
+	}
+	position = min(max(position, 0), len(q.hand))
+	q.hand = slices.Insert(q.hand, position, make([]int, count)...)
+}
+
+// deleteHand drops the manual-queue number at index and closes the gap.
+// It forgets a queue that no longer lines up with the tracks.
+func (q *queue) deleteHand(index int) {
+	if q.hand == nil {
+		return
+	}
+	if len(q.hand) != len(q.items) || index < 0 || index >= len(q.hand) {
+		q.hand = nil
+		return
+	}
+	n := q.hand[index]
+	q.hand = slices.Delete(q.hand, index, index+1)
+	if n > 0 {
+		for i, v := range q.hand {
+			if v > n {
+				q.hand[i]--
+			}
+		}
+	}
+	q.dropEmptyHand()
 }
 
 // find is the place of a track in the queue, or -1.
@@ -174,6 +372,7 @@ func (q *queue) insert(item youtube.MusicItem, playNext, autoPlay bool) {
 	}
 	position = min(max(position, 0), len(q.items))
 	q.items = slices.Insert(q.items, position, item)
+	q.insertHand(position, 1)
 	if position <= q.index {
 		q.index++
 	}
@@ -190,6 +389,56 @@ func (q *queue) insert(item youtube.MusicItem, playNext, autoPlay bool) {
 	}
 }
 
+// insertAll adds tracks where insert would add one: after the current track
+// when playNext is set, and otherwise at the end of the chosen tracks, ahead
+// of the generated ones. The current place and that boundary follow. Tracks
+// with no video are left out. It reports how many were added.
+func (q *queue) insertAll(items []youtube.MusicItem, playNext, autoPlay bool) int {
+	kept := make([]youtube.MusicItem, 0, len(items))
+	for _, item := range items {
+		if item.VideoID != "" {
+			kept = append(kept, item)
+		}
+	}
+	if len(kept) == 0 {
+		return 0
+	}
+	if len(q.items) == 0 {
+		q.items = append([]youtube.MusicItem(nil), kept...)
+		q.index = 0
+		q.recStart = -1
+		q.hand = nil
+		return len(kept)
+	}
+	position := len(q.items)
+	if q.recStart >= 0 {
+		position = q.recStart
+	}
+	if playNext {
+		position = q.index + 1
+	}
+	position = min(max(position, 0), len(q.items))
+	boundary := q.recStart
+	q.items = slices.Insert(q.items, position, kept...)
+	added := len(kept)
+	q.insertHand(position, added)
+	if position <= q.index {
+		q.index += added
+	}
+	if boundary >= 0 && position <= boundary {
+		q.recStart = boundary + added
+	}
+	if playNext {
+		q.playNext = kept[0].VideoID
+		// With auto-play off the queue stops at the generated tracks, so
+		// tracks to play next placed among them move the boundary past them.
+		if !autoPlay && boundary >= 0 && position >= boundary {
+			q.recStart = position + added
+		}
+	}
+	return added
+}
+
 // remove drops the track at index, which must not be the current one. The
 // current place, the play-next mark and the boundary of the generated tracks
 // follow. It reports whether anything was removed.
@@ -198,6 +447,7 @@ func (q *queue) remove(index int) bool {
 		return false
 	}
 	id := q.items[index].VideoID
+	q.deleteHand(index)
 	q.items = slices.Delete(q.items, index, index+1)
 	if index < q.index {
 		q.index--
@@ -224,7 +474,16 @@ func (q *queue) clearUpcoming() bool {
 	if q.remaining() < 1 {
 		return false
 	}
-	q.items = slices.Clone(q.items[:q.index+1])
+	end := q.index + 1
+	if q.hand != nil {
+		if len(q.hand) == len(q.items) && end <= len(q.hand) {
+			q.hand = append([]int(nil), q.hand[:end]...)
+		} else {
+			q.hand = nil
+		}
+	}
+	q.items = slices.Clone(q.items[:end])
+	q.compactHand()
 	q.playNext = ""
 	q.recStart = -1
 	q.generated = map[string]struct{}{}
@@ -342,7 +601,15 @@ func (q *queue) appendGenerated(items []youtube.MusicItem) {
 		for _, queued := range q.items[:played] {
 			delete(q.generated, queued.VideoID)
 		}
+		if q.hand != nil {
+			if len(q.hand) == len(q.items) && played < len(q.hand) {
+				q.hand = append([]int(nil), q.hand[played:]...)
+			} else {
+				q.hand = nil
+			}
+		}
 		q.items = slices.Clone(q.items[played:])
+		q.compactHand()
 		q.index = 0
 		if q.recStart >= 0 {
 			q.recStart = max(0, q.recStart-played)
@@ -356,6 +623,9 @@ func (q *queue) appendGenerated(items []youtube.MusicItem) {
 			q.recStart = len(q.items)
 		}
 		q.items = append(q.items, item)
+		if q.hand != nil {
+			q.hand = append(q.hand, 0)
+		}
 		q.generated[item.VideoID] = struct{}{}
 	}
 }
@@ -376,15 +646,35 @@ func (q *queue) shuffleQueue() {
 	}
 	// The order the queue is in now is what turning shuffle off puts back.
 	q.shuffleKept = append(q.shuffleKept[:0], q.items[:limit]...)
+	tracking := len(q.hand) == len(q.items)
 	current := q.items[q.index]
+	var currentN int
+	var restN []int
+	if tracking {
+		currentN = q.hand[q.index]
+		restN = make([]int, 0, limit-1)
+		restN = append(restN, q.hand[:q.index]...)
+		restN = append(restN, q.hand[q.index+1:limit]...)
+	}
 	rest := make([]youtube.MusicItem, 0, limit-1)
 	rest = append(rest, q.items[:q.index]...)
 	rest = append(rest, q.items[q.index+1:limit]...)
-	rand.Shuffle(len(rest), func(i, j int) { rest[i], rest[j] = rest[j], rest[i] })
+	rand.Shuffle(len(rest), func(i, j int) {
+		rest[i], rest[j] = rest[j], rest[i]
+		if tracking {
+			restN[i], restN[j] = restN[j], restN[i]
+		}
+	})
 	ordered := make([]youtube.MusicItem, 0, limit)
 	ordered = append(ordered, current)
 	ordered = append(ordered, rest...)
 	copy(q.items[:limit], ordered)
+	if tracking {
+		orderedN := make([]int, 0, limit)
+		orderedN = append(orderedN, currentN)
+		orderedN = append(orderedN, restN...)
+		copy(q.hand[:limit], orderedN)
+	}
 	q.index = 0
 	if q.recStart >= 0 {
 		q.recStart = limit
@@ -413,11 +703,21 @@ func (q *queue) restoreQueue() {
 	// The arranged tracks, taken in the order they are put back, each once:
 	// a playlist that holds a song twice keeps both copies.
 	left := slices.Clone(q.items[:limit])
+	tracking := len(q.hand) == len(q.items)
+	var leftHand []int
+	if tracking {
+		leftHand = slices.Clone(q.hand[:limit])
+	}
 	ordered := make([]youtube.MusicItem, 0, limit)
+	orderedHand := make([]int, 0, limit)
 	take := func(want youtube.MusicItem) {
 		for i, queued := range left {
 			if queued.VideoID == want.VideoID {
 				ordered = append(ordered, queued)
+				if tracking {
+					orderedHand = append(orderedHand, leftHand[i])
+					leftHand = slices.Delete(leftHand, i, i+1)
+				}
 				left = slices.Delete(left, i, i+1)
 				return
 			}
@@ -428,7 +728,13 @@ func (q *queue) restoreQueue() {
 	}
 	// Whatever the queue gained while it was arranged follows the rest.
 	ordered = append(ordered, left...)
+	if tracking {
+		orderedHand = append(orderedHand, leftHand...)
+	}
 	copy(q.items[:limit], ordered)
+	if tracking {
+		copy(q.hand[:limit], orderedHand)
+	}
 	q.shuffleKept = q.shuffleKept[:0]
 	if playing == "" {
 		return
@@ -512,7 +818,11 @@ func (q *queue) moveItems(indices []int, to int) bool {
 	if index < 0 {
 		return false
 	}
-	q.items, q.index = moved, index
+	var hand []int
+	if len(q.hand) == len(q.items) {
+		hand = reorderSlice(q.hand, indices, to)
+	}
+	q.items, q.index, q.hand = moved, index, hand
 	q.recStart = -1
 	if len(q.generated) > 0 {
 		q.recStart = slices.IndexFunc(moved, func(item youtube.MusicItem) bool {
@@ -527,14 +837,21 @@ func (q *queue) moveItems(indices []int, to int) bool {
 // place in items as they stand before the move, and returns the result in a
 // new slice.
 func reorder(items []youtube.MusicItem, indices []int, to int) []youtube.MusicItem {
+	return reorderSlice(items, indices, to)
+}
+
+// reorderSlice moves the items at indices, in any order, to before index to,
+// a place in items as they stand before the move, and returns the result in
+// a new slice.
+func reorderSlice[T any](items []T, indices []int, to int) []T {
 	at := make(map[int]struct{}, len(indices))
 	for _, index := range indices {
 		if index >= 0 && index < len(items) {
 			at[index] = struct{}{}
 		}
 	}
-	moving := make([]youtube.MusicItem, 0, len(at))
-	rest := make([]youtube.MusicItem, 0, len(items))
+	moving := make([]T, 0, len(at))
+	rest := make([]T, 0, len(items))
 	for i, item := range items {
 		if _, ok := at[i]; ok {
 			moving = append(moving, item)

@@ -19,6 +19,18 @@ func tracks(n int) []youtube.MusicItem {
 	return items
 }
 
+func TestWindowKeepsManualQueueNumbers(t *testing.T) {
+	hand := make([]int, 1000)
+	hand[600] = 1
+	s := State{Items: tracks(1000), Index: 500, RecStart: -1, Hand: hand}.Window()
+	if len(s.Hand) != len(s.Items) {
+		t.Fatalf("hand %d items %d", len(s.Hand), len(s.Items))
+	}
+	if s.Hand[120] != 1 {
+		t.Fatalf("mark moved to %v", s.Hand[120])
+	}
+}
+
 func TestWindowKeepsTheCurrentTrackAndEveryUpcomingTrack(t *testing.T) {
 	s := State{Items: tracks(1000), Index: 500, RecStart: 700, PlayNext: "v501"}.Window()
 	if len(s.Items) != 1000-500+MaxHistoryItems {
@@ -44,11 +56,11 @@ func TestWriterAndLoadRoundTripAndRepair(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "playback.json")
 	var w Writer
 	w.Path = path
-	w.Save(State{Items: tracks(5), Index: 2, RecStart: 4, PlayNext: "v3", Source: "Mix", Position: 42 * time.Second})
+	w.Save(State{Items: tracks(5), Index: 2, RecStart: 4, PlayNext: "v3", Hand: []int{0, 0, 0, 1, 2}, Source: "Mix", Position: 42 * time.Second})
 	w.Wait()
 
 	got := Load(path)
-	if len(got.Items) != 5 || got.Index != 2 || got.RecStart != 4 || got.PlayNext != "v3" || got.Source != "Mix" || got.Position != 42*time.Second {
+	if len(got.Items) != 5 || got.Index != 2 || got.RecStart != 4 || got.PlayNext != "v3" || got.Source != "Mix" || got.Position != 42*time.Second || !slices.Equal(got.Hand, []int{0, 0, 0, 1, 2}) {
 		t.Fatalf("loaded %+v", got)
 	}
 

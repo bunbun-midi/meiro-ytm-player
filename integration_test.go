@@ -165,6 +165,7 @@ func TestEveryPageLoadsAndDraws(t *testing.T) {
 		{"/home", []string{greeting(time.Now()), "Quick picks", "Ambient One"}},
 		{"/explore", []string{"Moods", "Night Drive"}},
 		{"/library", []string{"Library", "Your library lives here"}},
+		{"/playlists", []string{"Playlists", "No playlists yet"}},
 		{"/search", []string{"Find your next favourite"}},
 		{"/settings", []string{"Settings", "Appearance"}},
 		{"/album/MPREb_test", []string{"Album Track One"}},
@@ -409,6 +410,65 @@ func TestSideQueueStaysOnTheMainPages(t *testing.T) {
 	narrow, ok := tt.Find(long)
 	if !ok || narrow.H > sideQueueRow+2 {
 		t.Fatalf("a wider queue wrapped the title: %v", narrow)
+	}
+}
+
+func TestSideQueueManualQueueMarksTheTrackInPlace(t *testing.T) {
+	a := newTestApp(t)
+	first := youtube.MusicItem{VideoID: "one", Title: "First Song", Artist: "Ada", Album: "Record", Duration: "3:42"}
+	second := youtube.MusicItem{VideoID: "two", Title: "Second Song", Artist: "Bea", Album: "Other", Duration: "4:05"}
+	third := youtube.MusicItem{VideoID: "three", Title: "Third Song", Artist: "Cy", Album: "Other", Duration: "2:11"}
+	a.queue.replace(first, []youtube.MusicItem{first, second, third}, 0, "Queue")
+	a.current = first
+	a.settings.RailExpanded = true
+	tt := ui.NewTester(a.view, 1280, 900)
+	tt.Frame()
+
+	tt.RightClick("Second Song")
+	tt.Frame()
+	play, ok := tt.Find("Play track")
+	queued, okQueued := tt.Find("Queue Next")
+	if !ok || !okQueued || !tt.HasText("Queue Last") {
+		t.Fatalf("menu: %q", tt.Texts())
+	}
+	if play.H > 32 || play.W > 210 || queued.Y-(play.Y+play.H) > 40 {
+		t.Fatalf("menu is tall or wide: play %v queue next %v", play, queued)
+	}
+	if err := tt.Click("Queue Next"); err != nil {
+		t.Fatalf("queue next: %v in %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if !tt.HasText("[1]") || !tt.HasText("“Second Song” will play next") {
+		t.Fatalf("mark: %q", tt.Texts())
+	}
+	if got := ids(a.queue.items); !slices.Equal(got, []string{"one", "two", "three"}) || a.queue.handAt(1) != 1 {
+		t.Fatalf("list %v hand %v", got, a.queue.hand)
+	}
+	if next, ok := a.queue.next(true, repeatOff); !ok || next != 1 {
+		t.Fatalf("next %d %v", next, ok)
+	}
+
+	tt.RightClick("Third Song")
+	tt.Frame()
+	if err := tt.Click("Queue Last"); err != nil {
+		t.Fatalf("queue last: %v in %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if a.queue.handAt(1) != 1 || a.queue.handAt(2) != 2 || !tt.HasText("[2]") {
+		t.Fatalf("last: hand %v texts %q", a.queue.hand, tt.Texts())
+	}
+	if got := ids(a.queue.items); !slices.Equal(got, []string{"one", "two", "three"}) {
+		t.Fatalf("list moved: %v", got)
+	}
+
+	tt.RightClick("Third Song")
+	tt.Frame()
+	if err := tt.Click("Queue Next"); err != nil {
+		t.Fatalf("queue next again: %v in %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if a.queue.handAt(2) != 1 || a.queue.handAt(1) != 2 {
+		t.Fatalf("moved to the front: %v", a.queue.hand)
 	}
 }
 
@@ -978,6 +1038,66 @@ func TestRightClickingASuggestionOffersItsMenu(t *testing.T) {
 
 // The search field is in the top bar of every page of YouTube Music, and
 // submitting it there shows the search page with what it ran.
+func TestSearchOpensAYouTubeMusicLink(t *testing.T) {
+	open := func(t *testing.T, link, path, text string) {
+		t.Helper()
+		a := newTestApp(t)
+		a.router.Push("/home")
+		tt := ui.NewTester(a.view, 1000, 700)
+		searches.Store(0)
+		if err := tt.Click(searchPlaceholder); err != nil {
+			t.Fatal(err)
+		}
+		tt.Type(link)
+		tt.Key(0, ui.KeyEnter)
+		tt.Frame()
+		if !strings.HasPrefix(a.path(), path) {
+			t.Fatalf("%s opened %q", link, a.path())
+		}
+		if searches.Load() != 0 {
+			t.Fatalf("%s was searched", link)
+		}
+		if text != "" && !tt.HasText(text) {
+			t.Fatalf("%s did not show %s in %q", link, text, tt.Texts())
+		}
+	}
+	open(t, "https://music.youtube.com/browse/UCartist", "/artist/UCartist", "Artist Track")
+	open(t, "https://music.youtube.com/playlist?list=VLPL_songs", "/playlist/VLPL_songs", "Ameiro")
+	open(t, "https://music.youtube.com/@aurora", "/artist/UCresolved", "Resolved Artist")
+
+	a := newTestApp(t)
+	a.router.Push("/home")
+	tt := ui.NewTester(a.view, 1000, 700)
+	if err := tt.Click(searchPlaceholder); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("https://music.youtube.com/watch?v=vid-3")
+	tt.Key(0, ui.KeyEnter)
+	tt.Frame()
+	if a.current.VideoID != "vid-3" {
+		t.Fatalf("watch link played %q", a.current.VideoID)
+	}
+}
+
+func TestArtistPageListsEveryPlaylist(t *testing.T) {
+	a := newTestApp(t)
+	a.router.Push("/artist/UCartist")
+	tt := ui.NewTester(a.view, 1000, 700)
+	tt.Frame()
+	found := false
+	for range 20 {
+		if _, ok := tt.Find("Playlist 12"); ok {
+			found = true
+			break
+		}
+		tt.Scroll(600, 300, 0, 500)
+		tt.Frame()
+	}
+	if !found {
+		t.Fatalf("the playlists stop short of the last one: %q", tt.Texts())
+	}
+}
+
 func TestSearchingFromAnotherPage(t *testing.T) {
 	a := newTestApp(t)
 	a.router.Push("/explore")
@@ -2309,8 +2429,8 @@ func TestPlaybackSettingIsReachableByScrollingOnASmallWindow(t *testing.T) {
 		return r, ok && r.Y >= 0 && r.Y+r.H <= 450
 	}
 	switchControl, ok := inView()
-	for i := 0; i < 12 && !ok; i++ {
-		tt.Scroll(500, 300, 0, 180)
+	for i := 0; i < 40 && !ok; i++ {
+		tt.Scroll(500, 200, 0, 400)
 		tt.Frame()
 		switchControl, ok = inView()
 	}

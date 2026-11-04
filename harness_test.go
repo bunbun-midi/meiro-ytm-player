@@ -139,6 +139,8 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		reply = strings.NewReplacer("Deep Focus", "After Hours", "MPREb_test", "MPREb_nested").Replace(metadataPlaylistResponse)
 	case strings.Contains(asked, "MPREb_nested"):
 		reply = nestedAlbumResponse
+	case strings.Contains(asked, "artist-all-playlists"):
+		reply = artistPlaylistsResponse()
 	case strings.Contains(asked, "UCguest"):
 		reply = strings.ReplaceAll(strings.ReplaceAll(artistPage(), fakeArtist, "UCguest"), "Aurora Vale", "Guest Artist")
 	case strings.HasSuffix(request.URL.Path, "/next") && strings.Contains(asked, `"song-related"`):
@@ -171,6 +173,10 @@ func (fakeMusic) RoundTrip(request *http.Request) (*http.Response, error) {
 		reply = mixedRelatedNextResponse
 	case strings.Contains(asked, "MPTRsong-mixed"):
 		reply = mixedRelatedResponse
+	case strings.HasSuffix(request.URL.Path, "/navigation/resolve_url"):
+		reply = `{"endpoint":{"browseEndpoint":{"browseId":"UCresolved"}}}`
+	case strings.Contains(asked, "UCresolved"):
+		reply = `{"header":{"musicImmersiveHeaderRenderer":{"title":{"runs":[{"text":"Resolved Artist"}]}}},"contents":{"musicShelfRenderer":{"contents":[{"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"vid-resolved"},"flexColumns":[{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Resolved Track"}]}}}]}}]}}}`
 	case strings.Contains(asked, "UCartist"):
 		reply = artistPage()
 	case strings.HasSuffix(request.URL.Path, "/browse/edit_playlist"):
@@ -579,15 +585,42 @@ func artistPage() string {
 	"title":{"runs":[{"text":"Aurora Vale"}]},
 	"thumbnail":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://img.example/aurora"}]}}},
 	"subscriptionButton":{"subscribeButtonRenderer":{"subscribed":` + fmt.Sprint(fakeSaved(fakeArtist)) + `,"channelId":"` + fakeArtist + `","enabled":true}}}},
-	"contents":{"musicShelfRenderer":{"contents":[
-	{"musicResponsiveListItemRenderer":{
-		"playlistItemData":{"videoId":"vid-9"},
-		"flexColumns":[
-			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Artist Track"}]}}},
-			{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Aurora Vale"},{"text":" • "},{"text":"3:00"}]}}}
-		]
+	"contents":{"sectionListRenderer":{"contents":[
+	{"musicShelfRenderer":{"title":{"runs":[{"text":"Songs"}]},"contents":[
+		{"musicResponsiveListItemRenderer":{
+			"playlistItemData":{"videoId":"vid-9"},
+			"flexColumns":[
+				{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Artist Track"}]}}},
+				{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Aurora Vale"},{"text":" • "},{"text":"3:00"}]}}}
+			]
+		}}
+	]}},
+	{"musicCarouselShelfRenderer":{
+		"header":{"musicCarouselShelfBasicHeaderRenderer":{
+			"title":{"runs":[{"text":"Playlists"}]},
+			"moreContentButton":{"buttonRenderer":{"navigationEndpoint":{"browseEndpoint":{"browseId":"` + fakeArtist + `","params":"artist-all-playlists"}}}}
+		}},
+		"contents":[{"musicTwoRowItemRenderer":{
+			"title":{"runs":[{"text":"Preview Playlist"}]},
+			"navigationEndpoint":{"browseEndpoint":{"browseId":"VLPL_preview"}}
+		}}]
 	}}
 ]}}}`
+}
+
+// artistPlaylistsResponse is the rest of an artist's playlists, the page the
+// preview's more button names. Twelve of them, past what the preview shows.
+func artistPlaylistsResponse() string {
+	var body strings.Builder
+	body.WriteString(`{"contents":{"gridRenderer":{"items":[`)
+	for i := 1; i <= 12; i++ {
+		if i > 1 {
+			body.WriteByte(',')
+		}
+		fmt.Fprintf(&body, `{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"Playlist %02d"}]},"navigationEndpoint":{"browseEndpoint":{"browseId":"VLPL_%02d"}}}}`, i, i)
+	}
+	body.WriteString(`]}}}`)
+	return body.String()
 }
 
 // searchResponse is a search page as YouTube Music answers one: the filters it

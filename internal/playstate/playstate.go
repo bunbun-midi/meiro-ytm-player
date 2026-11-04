@@ -33,6 +33,9 @@ type State struct {
 	RecStart int `json:"recStart"`
 	// PlayNext is the track the user asked to play next, if any.
 	PlayNext string `json:"playNext,omitempty"`
+	// Hand is the manual queue: one number per item, where 1 plays next and
+	// 0 means the track was not queued that way. It is empty when none are.
+	Hand []int `json:"hand,omitempty"`
 	// Source names where the chosen tracks came from.
 	Source string `json:"source,omitempty"`
 	// Position is how far into the current track playback had come.
@@ -60,6 +63,13 @@ func (s State) Window() State {
 	}
 	start := s.Index - MaxHistoryItems
 	s.Items = s.Items[start:]
+	if len(s.Hand) > 0 {
+		if start < len(s.Hand) {
+			s.Hand = s.Hand[start:]
+		} else {
+			s.Hand = nil
+		}
+	}
 	s.Index -= start
 	if s.RecStart >= 0 {
 		s.RecStart = max(s.RecStart-start, 0)
@@ -86,6 +96,7 @@ func (s State) sanitize() State {
 	}
 	out := State{Episodes: episodes}
 	out.RecStart = -1
+	keepHand := len(s.Hand) == len(s.Items)
 	for i, item := range s.Items {
 		if item.VideoID == "" {
 			continue
@@ -97,6 +108,12 @@ func (s State) sanitize() State {
 			out.RecStart = len(out.Items)
 		}
 		out.Items = append(out.Items, item)
+		if keepHand {
+			out.Hand = append(out.Hand, s.Hand[i])
+		}
+	}
+	if !keepHand {
+		out.Hand = nil
 	}
 	if slices.ContainsFunc(out.Items, func(t youtube.MusicItem) bool { return t.VideoID == s.PlayNext }) {
 		out.PlayNext = s.PlayNext

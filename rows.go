@@ -141,6 +141,22 @@ func (a *app) syncRows() {
 	}
 }
 
+// sectionListsPlaylists reports whether a shelf is playlists rather than songs.
+func sectionListsPlaylists(section youtube.MusicSection) bool {
+	if strings.EqualFold(strings.TrimSpace(section.Title), "Playlists") {
+		return len(section.Items) > 0
+	}
+	if len(section.Items) == 0 {
+		return false
+	}
+	for _, item := range section.Items {
+		if item.Target().Kind != youtube.TargetPlaylist {
+			return false
+		}
+	}
+	return true
+}
+
 // shelfShape folds each section's title and item count into one number, as
 // FNV-1a: a cheap stand-in for the sections themselves.
 func shelfShape(sections []youtube.MusicSection) uint64 {
@@ -238,10 +254,13 @@ func buildRows(rows []row, playable []youtube.MusicItem, r *route, s *pageState,
 			}
 		}
 		mostlySongs := songs*10 >= len(shown)*6
+		// An artist's playlists arrive as a short carousel. Listing them
+		// down the page is what lets the rest, once loaded, be scrolled to.
+		listPlaylists := r.id == routeArtist && sectionListsPlaylists(section)
 		if section.Title != "" {
 			rows = append(rows, row{kind: rowHeading, title: section.Title, shelf: shelf, track: -1})
 		}
-		if vertical || (r.isDetail() && mostlySongs) {
+		if vertical || listPlaylists || (r.isDetail() && mostlySongs) {
 			for position, item := range shown {
 				rw := row{kind: rowTrack, shelf: shelf, item: item, track: -1, position: position}
 				if item.IsTrack() {

@@ -39,6 +39,9 @@ A user plays a track, controls the player bar, edits the queue, and finds the sa
   Songs and podcasts each remember
   both speed and pitch. A pitch change does not change the pace, and it does
   not play a second, delayed copy of the sound. The speed uses Bungee.
+  At 1× and 0 st the recording is copied through. The stretch runs when the
+  speed or the pitch leaves that, and the second voice is held at 0 st while
+  its fader is closed.
   Settings → Sound → Time stretch can switch it to the phase vocoder or to
   overlap-add, and the change applies while a track is playing.
 - `play-mini` shows and controls the mini player.
@@ -57,6 +60,7 @@ A user plays a track, controls the player bar, edits the queue, and finds the sa
 - Open the tray mini player from the tray icon on macOS and Windows. On Linux, choose `Open Meiro` from the tray menu to restore the main window; Linux does not offer the tray mini player.
 - In the mini player's queue, right-click a track and choose `Go to artist`. The flyout closes and the main window shows that artist's page.
 - Right click a track for `Play next` and `Add to queue`.
+- On `Playlists`, right-click a saved playlist and choose `Add Next`, `Add to Queue` or `Replace List` to put that whole list into the queue that is playing. The queue beside the rail is that same list. `All To Playlist` on a row there saves it; `Song to Playlist` adds the song, and typing narrows the playlist names. `Queue Next` and `Queue Last` on a row there leave the list where it is and mark the track `[1]`, `[2]` and so on, in blue. Those tracks play in that order before the rest of the list. The menu's rows are short and sit close to their labels.
 - In the main player, click an artist or album name below the track title to open its page. Back returns to the page you came from. Metadata can use two lines; clipped links show their full name in a tooltip.
 - In `Up next`, Cmd-click on macOS or Ctrl-click on Windows/Linux to select
   several tracks; Shift-click extends the selection. Drag a selected row to
@@ -80,6 +84,7 @@ Preconditions:
   check the slider closes. At 1280 pixels wide, `Volume` is horizontal and
   visible without hovering.
 - **Next.** `p.click("Next", "next")`. The seeded album has one track, so Next stays on `vid-3`. Use a longer queue to see it move, and assert `a.current.VideoID`.
+- **Manual queue.** With `RailExpanded` and three tracks in `a.queue`, right-click the second row and choose `Queue Next`, then right-click the third and choose `Queue Last`. The list order is unchanged, the rows show `[1]` and `[2]`, and `a.queue.next` is the second track. The menu entry `Play track` is shorter than 32px and narrower than 210px. Queue Next on the third track makes it `[1]` and the second `[2]`.
 - **Queue panel.** `p.click("Up next", "bar")`, then check `a.nowPlaying.open`. The panel draws in its own view. Make a second window with `panel := newProof(t, ui.NewTester(a.nowPlayingView, 1000, 700))` and call `panel.step`. It shows `Lyrics`, `Related` and `Clear queue`. The header reads `Playing from` and the playlist on one line, and the source, `Auto-play` and the count sit the same distance apart. To edit, right-click a row (`tt.RightClickAt` its middle) and choose `Remove from queue`, or click `Clear queue`, as `TestEditingTheQueueFromItsPanel` does.
 - **Failure.** Set `r.err["bad"] = errors.New("Video unavailable")` before the click. The bar shows `This track is no longer available.` or the skip notice.
 - **Real audio.** Make a tone with `ffmpeg -f lavfi -i sine=duration=3`, set `r.file`, click the track, then loop `a.poll()` and `time.Sleep(10ms)` until `a.player.Position()` passes 500ms and `a.player.Playing()` is true. Then `p.step("heard")`. Verified: position reaches 700ms in under half a second.

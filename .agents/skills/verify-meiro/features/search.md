@@ -11,6 +11,7 @@ A user types in the search bar, picks a suggestion or presses Enter, filters res
 - `search-menu` offers the item menu on right click.
 - `search-elsewhere` starts a search from a page that is not `/search`.
 - `search-episode-result` plays an episode top result whose page link carries the video ID.
+- `search-link` opens a YouTube or YouTube Music link pasted into the bar: a song plays, and an album, playlist, artist, podcast or channel opens. A handle such as `music.youtube.com/@name` is resolved and opened.
 
 ## How to get to it (user POV)
 
@@ -33,6 +34,7 @@ Preconditions:
 - **Next page.** Mirror `TestSearchLoadsTheNextPageItself`. `searchesMore.Load()` becomes `1` with no click.
 - **Menu.** `tt.RightClick("Suggested Song")` and `tt.Menu()` lists the item actions.
 - **Episode result.** `TestSearchEpisodeTopResultPlays` searches for `play episode result`, clicks **Play**, and checks that the resolver receives `UZ83quirqLA` from the episode page ID `MPEDUZ83quirqLA`.
+- **Link.** `TestSearchOpensAYouTubeMusicLink` types `https://music.youtube.com/browse/UCartist` and presses Enter. The path is `/artist/UCartist` and `searches` stays 0. A playlist link opens `/playlist/VLPL_songs`. `@aurora` opens `/artist/UCresolved`. A watch link plays `vid-3`.
 
 ## Gotchas
 

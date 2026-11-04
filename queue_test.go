@@ -393,3 +393,100 @@ func TestQueueNextEligible(t *testing.T) {
 		})
 	}
 }
+
+func TestInsertAllFollowsTheCurrentTrackAndTheGeneratedBoundary(t *testing.T) {
+	q := newQueue()
+	if n := q.insertAll([]youtube.MusicItem{{Title: "blank"}, tracks("x")[0]}, true, false); n != 1 || ids(q.items)[0] != "x" || q.index != 0 {
+		t.Fatalf("empty queue: n %d items %v index %d", n, ids(q.items), q.index)
+	}
+
+	q = newQueue()
+	q.items = tracks("a", "b", "r")
+	q.index = 0
+	q.recStart = 2
+	if n := q.insertAll(tracks("x", "y"), true, false); n != 2 {
+		t.Fatal(n)
+	}
+	if got := ids(q.items); !slices.Equal(got, []string{"a", "x", "y", "b", "r"}) || q.index != 0 || q.recStart != 4 || q.playNext != "x" {
+		t.Fatalf("next: items %v index %d boundary %d playNext %s", got, q.index, q.recStart, q.playNext)
+	}
+	if n := q.insertAll(tracks("z"), false, false); n != 1 {
+		t.Fatal(n)
+	}
+	if got := ids(q.items); !slices.Equal(got, []string{"a", "x", "y", "b", "z", "r"}) || q.recStart != 5 || q.index != 0 {
+		t.Fatalf("end: items %v index %d boundary %d", got, q.index, q.recStart)
+	}
+}
+
+// A manual queue marks tracks in place. The list order stays, the marks
+// follow a track when it moves, and playback takes the lowest number first.
+func TestManualQueueKeepsTheListAndPlaysByNumber(t *testing.T) {
+	q := newQueue()
+	items := tracks("a", "b", "c", "d")
+	q.replace(items[0], items, 0, "Queue")
+	if q.queueNext(0) {
+		t.Fatal("queued the track that is playing")
+	}
+	if !q.queueLast(2) || !q.queueLast(3) || !q.queueNext(1) {
+		t.Fatal("queue")
+	}
+	if got := ids(q.items); !slices.Equal(got, []string{"a", "b", "c", "d"}) || !slices.Equal(q.hand, []int{0, 1, 2, 3}) {
+		t.Fatalf("list %v hand %v", got, q.hand)
+	}
+	if next, ok := q.next(true, repeatOff); !ok || next != 1 {
+		t.Fatalf("next %d %v", next, ok)
+	}
+
+	// Playing the marked track clears it and closes the gap.
+	q.moveTo(1)
+	if q.handAt(1) != 0 || !slices.Equal(q.hand, []int{0, 0, 1, 2}) {
+		t.Fatalf("after play: %v", q.hand)
+	}
+	if next, ok := q.next(true, repeatOff); !ok || q.at(next).VideoID != "c" {
+		t.Fatalf("next after play: %d %v", next, ok)
+	}
+
+	// The number stays with the track when the list is reordered.
+	if !q.moveItems([]int{2}, 4) {
+		t.Fatal("move")
+	}
+	if got := ids(q.items); !slices.Equal(got, []string{"a", "b", "d", "c"}) || q.handAt(2) != 2 || q.handAt(3) != 1 {
+		t.Fatalf("reordered %v hand %v", got, q.hand)
+	}
+	if next, ok := q.next(true, repeatOff); !ok || q.at(next).VideoID != "c" {
+		t.Fatalf("next followed the list: %d %v", next, ok)
+	}
+
+	// Inserting a track does not renumber the ones already marked.
+	q.insert(youtube.MusicItem{VideoID: "e"}, true, true)
+	if got := ids(q.items); !slices.Equal(got, []string{"a", "b", "e", "d", "c"}) || !slices.Equal(q.hand, []int{0, 0, 0, 2, 1}) {
+		t.Fatalf("insert %v hand %v", got, q.hand)
+	}
+
+	// Removing a marked track closes the gap.
+	if !q.remove(4) || !slices.Equal(q.hand, []int{0, 0, 0, 1}) {
+		t.Fatalf("remove hand %v", q.hand)
+	}
+
+	// The same list, started on another track, keeps the marks and clears the one that starts.
+	q.queueLast(2)
+	if !slices.Equal(q.hand, []int{0, 0, 2, 1}) {
+		t.Fatalf("queue last %v", q.hand)
+	}
+	again := slices.Clone(q.items)
+	q.replace(again[3], again, 3, q.source)
+	if got := ids(q.items); !slices.Equal(got, []string{"a", "b", "e", "d"}) || q.index != 3 || !slices.Equal(q.hand, []int{0, 0, 1, 0}) {
+		t.Fatalf("replace kept %v index %d hand %v", got, q.index, q.hand)
+	}
+
+	// A disliked mark is passed over, and the list order is what follows when none remain.
+	q = newQueue()
+	items = tracks("a", "b", "c")
+	items[1].Like = youtube.Disliked
+	q.replace(items[0], items, 0, "Queue")
+	q.queueNext(1)
+	q.queueLast(2)
+	if next, ok := q.nextEligible(true, repeatOff, true); !ok || q.at(next).VideoID != "c" {
+		t.Fatalf("skip disliked: %d %v hand %v", next, ok, q.hand)
+	}
+}

@@ -18,6 +18,14 @@ mygo_windows_*.syso
 /build4/
 /build5/
 /build6/
+/build7/
+/build8/
+/build9/
+/build10/
+/build11/
+/build12/
+/build13/
+/build14/
 
 # Local Cloudflare Workers state for the website.
 website/.wrangler/

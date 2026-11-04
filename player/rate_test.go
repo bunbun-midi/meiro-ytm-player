@@ -8,6 +8,19 @@ import (
 	"time"
 )
 
+func TestUnityCopyIsTheRecording(t *testing.T) {
+	in := sinePCM(440, 200*time.Millisecond)
+	for i := 0; i < len(in); i += frameBytes {
+		in[i+2], in[i+3] = 0, 0
+	}
+	for _, stretch := range []Stretch{StretchBungee, StretchPhaseVocoder, StretchOverlapAdd} {
+		out := readRateAlgo(t, append([]byte(nil), in...), 1, 0, stretch)
+		if !bytes.Equal(out, in) {
+			t.Fatalf("%s at 1× and 0 st changed the recording (%d bytes vs %d)", stretchName(stretch), len(out), len(in))
+		}
+	}
+}
+
 func TestRateAtUnityMatchesTheSource(t *testing.T) {
 	in := sinePCM(440, 500*time.Millisecond)
 	out := readRateAlgo(t, in, 1, 0, StretchOverlapAdd)
