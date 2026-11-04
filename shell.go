@@ -50,11 +50,15 @@ func (a *app) view(c *ui.Context) {
 	shell := ui.Row(c).Fill().AlignItems(ui.Stretch)
 	shell.Children(func() {
 		a.rail(c, bar)
+		if a.settings.RailExpanded {
+			a.sideQueue(c)
+		}
 		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 			a.sheet(c, bar)
 		})
 	})
 	a.reserveSpaceForPlayback(shell)
+	a.playbackPanelView(c)
 	a.signInDialog(c)
 	a.newPlaylistDialog(c)
 	a.deletePlaylistDialog(c)
@@ -103,6 +107,9 @@ func (a *app) rail(c *ui.Context, bar ui.TitleBar) {
 			items = append(items, item)
 		}
 	}
+	footer = append([]m3.NavItem{{
+		ID: playbackNav, Label: "Playback", Icon: m3.IconMusicNote, Selected: m3.IconMusicNote,
+	}}, footer...)
 	r, _ := a.route()
 	selected := ""
 	if r.nav != routeNotFound {
@@ -117,14 +124,17 @@ func (a *app) rail(c *ui.Context, bar ui.TitleBar) {
 		Items:    items,
 		Footer:   footer,
 		Selected: selected,
-		Expanded: a.settings.RailExpanded,
+		MenuOpen: a.settings.RailExpanded,
 		TopInset: topInset,
 	})
 	if event.Toggle {
 		a.settings.RailExpanded = !a.settings.RailExpanded
 		a.saveSettings()
 	}
-	if event.Item != "" && event.Item != selected {
+	if event.Item == playbackNav {
+		a.nowPlaying.speedMenu = ""
+		a.playbackPanel.open = !a.playbackPanel.open
+	} else if event.Item != "" && event.Item != selected {
 		a.router.Push(event.Item)
 	} else if event.Item != "" && a.nowPlaying.open && !a.nowPlaying.closing {
 		// The page is already showing, so its tab has nothing to open: with

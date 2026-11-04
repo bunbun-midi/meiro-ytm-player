@@ -244,6 +244,16 @@ func (a *app) applyReloadedSettings(previous settings.Settings) {
 	if s.TimeStretch != previous.TimeStretch {
 		a.applyStretch()
 	}
+	if s.OctaveSemitones != previous.OctaveSemitones || s.OctaveFade != previous.OctaveFade || s.OctaveCrossfade != previous.OctaveCrossfade ||
+		s.Compressor != previous.Compressor || s.CompThreshold != previous.CompThreshold || s.CompRatio != previous.CompRatio ||
+		s.CompAttack != previous.CompAttack || s.CompRelease != previous.CompRelease || s.CompKnee != previous.CompKnee || s.CompMakeup != previous.CompMakeup {
+		a.applyBlend()
+	}
+	if s.PlaybackPlaced != previous.PlaybackPlaced || s.PlaybackX != previous.PlaybackX || s.PlaybackY != previous.PlaybackY {
+		a.playbackPanel.placed = s.PlaybackPlaced
+		a.playbackPanel.x = float32(s.PlaybackX)
+		a.playbackPanel.y = float32(s.PlaybackY)
+	}
 	if s.OutputDevice != previous.OutputDevice {
 		a.applyOutputDevice()
 	}

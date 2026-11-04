@@ -4,6 +4,7 @@ go_library(
     name = "player",
     srcs = [
         "bass.go",
+        "blend.go",
         "equalizer.go",
         "fade.go",
         "null.go",
@@ -35,6 +36,7 @@ go_test(
     name = "player_test",
     srcs = [
         "bass_test.go",
+        "blend_test.go",
         "eq_test.go",
         "fade_test.go",
         "integration_test.go",

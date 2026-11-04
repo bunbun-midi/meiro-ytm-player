@@ -7,6 +7,23 @@ import (
 	"testing"
 )
 
+func TestSecondVoiceKeepsASavedZeroAndTheOldDefault(t *testing.T) {
+	fresh, err := Parse([]byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fresh.OctaveSemitones != 12 || !fresh.Compressor || fresh.CompRatio != 20 || fresh.CompAttack != 5 {
+		t.Fatalf("defaults %+v", fresh)
+	}
+	saved, err := Parse([]byte(`{"octaveSemitones":0,"octaveFade":0.25,"compressor":false,"compRatio":4}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.OctaveSemitones != 0 || saved.OctaveFade != 0.25 || saved.Compressor || saved.CompRatio != 4 || saved.CompRelease != 50 {
+		t.Fatalf("saved %+v", saved)
+	}
+}
+
 func TestMacLoadsLegacyDesktopSettingsWithoutTrayOrBanners(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 	if err := os.WriteFile(path, []byte(`{"showTray":true,"notifyTrack":true,"closeToTray":true,"volume":42}`), 0o600); err != nil {

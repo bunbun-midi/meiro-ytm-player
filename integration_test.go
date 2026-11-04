@@ -25,6 +25,7 @@ import (
 	"github.com/elianiva/meiro/internal/artwork"
 	"github.com/elianiva/meiro/internal/cookies"
 	"github.com/elianiva/meiro/internal/history"
+	"github.com/elianiva/meiro/internal/offline"
 	"github.com/elianiva/meiro/internal/settings"
 	"github.com/elianiva/meiro/m3"
 	"github.com/elianiva/meiro/youtube"
@@ -224,53 +225,20 @@ func assertSearchInputKeepsBoundsOnFocus(t *testing.T, tt *ui.Tester, label stri
 func TestExpandedNavigationMetricsAndFullWidthSelection(t *testing.T) {
 	a := newTestApp(t)
 	tt := ui.NewTester(a.view, 1280, 720)
+	search, ok := tt.Find("Search")
+	if !ok {
+		t.Fatalf("compact navigation has no Search destination: %q", tt.Texts())
+	}
 	if err := tt.Click("Expand navigation"); err != nil {
 		t.Fatal(err)
 	}
-	tt.Advance(time.Second)
-
-	home, ok := tt.Find("Home")
-	if !ok {
-		t.Fatalf("expanded navigation has no Home destination: %q", tt.Texts())
+	tt.Frame()
+	opened, ok := tt.Find("Search")
+	if !ok || opened.W != search.W {
+		t.Fatalf("the menu button widened the rail: before %v, after %v", search, opened)
 	}
-	search, ok := tt.Find("Search")
-	if !ok {
-		t.Fatalf("expanded navigation has no Search destination: %q", tt.Texts())
-	}
-	if home.W < 230 || home.W > 240 {
-		t.Errorf("expanded navigation width is %g DIPs, want to stay near 236", home.W)
-	}
-	if pitch := search.Y - home.Y; pitch < 67 || pitch > 69 {
-		t.Errorf("expanded navigation row pitch is %g DIPs, want 68", pitch)
-	}
-	image := tt.Image()
-	x, y := int(home.X+100), int(home.Y)
-	selected := image.RGBAAt(x, y+1)
-	outside := image.RGBAAt(x, y-5)
-	if selected == outside {
-		t.Errorf("the selected 56-DIP indicator is missing: selected=%v outside=%v", selected, outside)
-	}
-	activeLeft := image.RGBAAt(int(home.X+25), int(home.Y+28))
-	leftMargin := image.RGBAAt(int(home.X+5), int(home.Y+28))
-	if activeLeft == leftMargin {
-		t.Errorf("the selected background does not reach the left rail inset: row=%v margin=%v", activeLeft, leftMargin)
-	}
-	activeRight := image.RGBAAt(int(home.X+200), int(home.Y+28))
-	activeMargin := image.RGBAAt(int(home.X+220), int(home.Y+28))
-	if activeRight == activeMargin {
-		t.Errorf("the selected background escapes the rail's horizontal insets: right=%v margin=%v", activeRight, activeMargin)
-	}
-	for _, label := range []string{"Search", "Explore", "Library", "Settings"} {
-		row, ok := tt.Find(label)
-		if !ok {
-			t.Errorf("expanded navigation has no %s destination: %q", label, tt.Texts())
-			continue
-		}
-		inside := image.RGBAAt(int(row.X+200), int(row.Y+28))
-		outside := image.RGBAAt(int(row.X+5), int(row.Y+28))
-		if inside != outside {
-			t.Errorf("%s has an unintended idle indicator: inside=%v outside=%v", label, inside, outside)
-		}
+	if _, ok := tt.Find("Resize playlist"); !ok {
+		t.Fatalf("the queue did not open beside the rail: %q", tt.Texts())
 	}
 }
 
@@ -292,18 +260,15 @@ func TestNavigationRailAndPageAnimateTogether(t *testing.T) {
 		t.Fatalf("compact label is not centered below its icon: center %.1f, row %v", center, compact)
 	}
 	compactRows := make(map[string]ui.Rect)
-	compactIconCenters := make(map[string]float64)
 	for _, label := range []string{"Home", "Search", "Explore", "Library", "Settings"} {
 		row, ok := tt.Find(label)
 		if !ok {
 			t.Fatalf("compact navigation has no %s destination: %q", label, tt.Texts())
 		}
-		center, ok := navigationItemIconCenterY(tt.Image(), row)
-		if !ok {
+		if _, ok := navigationItemIconCenterY(tt.Image(), row); !ok {
 			t.Fatalf("compact navigation has no visible icon for %s", label)
 		}
 		compactRows[label] = row
-		compactIconCenters[label] = center
 	}
 	compactPage, ok := tt.Find("Quick picks")
 	if !ok {
@@ -313,70 +278,254 @@ func TestNavigationRailAndPageAnimateTogether(t *testing.T) {
 	if err := tt.Click("Expand navigation"); err != nil {
 		t.Fatal(err)
 	}
-	tt.Advance(80 * time.Millisecond)
-	if angle := navigationGlyphAngle(tt.Image(), menu); math.Abs(angle) < 20 {
-		t.Fatalf("menu glyph did not rotate during the rail transition: angle %.1f°", angle)
+	tt.Frame()
+	opened, ok := tt.Find("Search")
+	if !ok || opened.W != compact.W || opened.Y != compact.Y {
+		t.Fatalf("opening the queue moved Search: compact %v, opened %v", compact, opened)
 	}
-	openingLabel, ok := tt.Find("Search")
-	if !ok {
-		t.Fatalf("Search disappeared during the rail transition: %q", tt.Texts())
-	}
-	if center := navigationCompactLabelCenterX(tt.Image(), openingLabel); math.Abs(center-float64(openingLabel.X+m3.RailCollapsed/2)) > 8 {
-		t.Fatalf("compact label slid before switching layouts: center %.1f, row %v", center, openingLabel)
-	}
-	tt.Advance(70 * time.Millisecond)
-	opening, ok := tt.Find("Search")
-	if !ok || opening.W <= compact.W || opening.W >= 230 {
-		t.Fatalf("rail did not pass smoothly through an intermediate width: compact %g, opening %v", compact.W, opening)
-	}
-	openingPage, ok := tt.Find("Quick picks")
-	if !ok || openingPage.X <= compactPage.X {
-		t.Fatalf("page did not move with the opening rail: compact %v, opening %v", compactPage, openingPage)
-	}
-	tt.Advance(time.Second)
-	expanded, ok := tt.Find("Search")
-	if !ok || expanded.W < 230 || expanded.W > 240 {
-		t.Fatalf("rail did not settle at its expanded width: %v", expanded)
-	}
-	expandedPage, ok := tt.Find("Quick picks")
-	if !ok || expandedPage.X <= openingPage.X {
-		t.Fatalf("page stopped following the rail: opening %v, expanded %v", openingPage, expandedPage)
+	page, ok := tt.Find("Quick picks")
+	if !ok || page.X <= compactPage.X {
+		t.Fatalf("the page did not make room for the queue: before %v, after %v", compactPage, page)
 	}
 	for label, compactRow := range compactRows {
 		row, ok := tt.Find(label)
-		if !ok {
-			t.Fatalf("expanded navigation has no %s destination: %q", label, tt.Texts())
-		}
-		if row.Y != compactRow.Y {
-			t.Errorf("%s lost its vertical anchor: compact row %v, expanded row %v", label, compactRow, row)
-		}
-		center, ok := navigationItemIconCenterY(tt.Image(), row)
-		if !ok {
-			t.Errorf("expanded navigation has no visible icon for %s", label)
-			continue
-		}
-		if delta := center - compactIconCenters[label]; delta < 4 || delta > 8 {
-			t.Errorf("%s icon did not move down within its own anchor: compact %.1f, expanded %.1f (delta %.1f)", label, compactIconCenters[label], center, delta)
+		if !ok || row.Y != compactRow.Y {
+			t.Errorf("%s left its compact place: before %v, after %v", label, compactRow, row)
 		}
 	}
-
 	if err := tt.Click("Collapse navigation"); err != nil {
 		t.Fatal(err)
 	}
-	tt.Advance(150 * time.Millisecond)
-	closing, ok := tt.Find("Search")
-	if !ok || closing.W >= expanded.W || closing.W <= compact.W {
-		t.Fatalf("rail did not pass smoothly through an intermediate width while closing: expanded %g, closing %v", expanded.W, closing)
+	tt.Frame()
+	if _, ok := tt.Find("Resize playlist"); ok {
+		t.Fatal("the queue stayed open after it was closed")
 	}
-	closingPage, ok := tt.Find("Quick picks")
-	if !ok || closingPage.X >= expandedPage.X {
-		t.Fatalf("page did not follow the closing rail: expanded %v, closing %v", expandedPage, closingPage)
-	}
-	tt.Advance(time.Second)
 	collapsed, ok := tt.Find("Search")
 	if !ok || collapsed.W != compact.W {
-		t.Fatalf("rail did not return to its compact width: start %g, end %v", compact.W, collapsed)
+		t.Fatalf("the rail left its compact width: start %v, end %v", compact, collapsed)
 	}
+}
+
+func TestSideQueueStaysOnTheMainPages(t *testing.T) {
+	a := newTestApp(t)
+	a.saver.Path = filepath.Join(t.TempDir(), "settings.json")
+	long := "A very long track title that must stay on one row"
+	first := youtube.MusicItem{
+		VideoID: "one", Title: long, Artist: "Ada", Album: "Record", Duration: "3:42",
+		BrowseID: "UCada",
+		Byline: &youtube.TrackByline{Parts: []youtube.BylinePart{
+			{Text: "Ada", BrowseID: "UCada"},
+			{Text: "Record", BrowseID: "MPREb_record"},
+		}},
+	}
+	second := youtube.MusicItem{VideoID: "two", Title: "Second Song", Artist: "Bea", Album: "Other", Duration: "4:05"}
+	a.queue.replace(first, []youtube.MusicItem{first, second}, 0, "Queue")
+	a.current = first
+	a.settings.SideQueueWidth = 110
+	tt := ui.NewTester(a.view, 1280, 720)
+	tt.Frame()
+	if err := tt.Click("Expand navigation"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	title, ok := tt.Find(long)
+	if !ok {
+		t.Fatalf("the queue has no track: %q", tt.Texts())
+	}
+	if title.H > sideQueueRow+2 {
+		t.Fatalf("the track title wrapped: height %g", title.H)
+	}
+	edge, ok := tt.Find("Resize playlist")
+	if !ok {
+		t.Fatal("the queue has no right edge")
+	}
+	if edge.X > m3.RailCollapsed+110+8 {
+		t.Fatalf("a narrow queue grew to fit its text: edge at %g", edge.X)
+	}
+	for _, text := range tt.Texts() {
+		if strings.Contains(text, "…") || strings.Contains(text, "...") {
+			t.Fatalf("the queue shortened text with an ellipsis: %q", text)
+		}
+	}
+	for _, dest := range []string{"Search", "Explore", "Library", "Downloads", "Home"} {
+		if err := tt.Click(dest); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		if !tt.HasText(long) {
+			t.Fatalf("the queue left the screen on %s: %q", dest, tt.Texts())
+		}
+		row, ok := tt.Find("Search")
+		if !ok || row.W > m3.RailCollapsed+1 {
+			t.Fatalf("the rail left its compact width on %s: %v", dest, row)
+		}
+	}
+	if err := tt.Click("Go to artist: Ada"); err != nil {
+		t.Fatalf("artist is not a link: %v in %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if !strings.HasPrefix(a.router.Path(), "/artist/UCada") {
+		t.Fatalf("artist opened %q", a.router.Path())
+	}
+	if !tt.HasText(long) {
+		t.Fatal("the queue closed on the way to the artist")
+	}
+	if err := tt.Click("Go to album: Record"); err != nil {
+		t.Fatalf("album is not a link: %v in %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if !strings.HasPrefix(a.router.Path(), "/album/MPREb_record") {
+		t.Fatalf("album opened %q", a.router.Path())
+	}
+	length, ok := tt.Find("3:42")
+	if !ok {
+		t.Fatal("the length is missing")
+	}
+	tt.ClickAt(length.X+length.W/2, length.Y+length.H/2)
+	tt.Frame()
+	if !strings.HasPrefix(a.router.Path(), "/album/MPREb_record") || a.queue.index != 0 {
+		t.Fatalf("the length was interactive: path %q index %d", a.router.Path(), a.queue.index)
+	}
+	if err := tt.Click("Second Song"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.queue.index != 1 || a.current.VideoID != "two" {
+		t.Fatalf("the title did not play that track: index %d current %q", a.queue.index, a.current.VideoID)
+	}
+
+	edge, ok = tt.Find("Resize playlist")
+	if !ok {
+		t.Fatal("the edge disappeared")
+	}
+	x, y := edge.X+edge.W/2, edge.Y+40
+	tt.Press(x, y)
+	tt.Move(x+80, y)
+	tt.Release(x+80, y)
+	tt.Frame()
+	if a.settings.SideQueueWidth < 160 {
+		t.Fatalf("dragging the edge left the width at %v", a.settings.SideQueueWidth)
+	}
+	narrow, ok := tt.Find(long)
+	if !ok || narrow.H > sideQueueRow+2 {
+		t.Fatalf("a wider queue wrapped the title: %v", narrow)
+	}
+}
+
+func TestSideQueueReorderMenuAndPlaybackPanel(t *testing.T) {
+	a := newTestApp(t)
+	a.saver.Path = filepath.Join(t.TempDir(), "settings.json")
+	a.downloads.dir = t.TempDir()
+	first := youtube.MusicItem{VideoID: "one", Title: "First Song", Artist: "Ada", Album: "Record", Duration: "3:42"}
+	second := youtube.MusicItem{VideoID: "two", Title: "Second Song", Artist: "Bea", Album: "Other", Duration: "4:05"}
+	a.queue.replace(first, []youtube.MusicItem{first, second}, 0, "Queue")
+	a.current = first
+	a.downloads.lib.Add(offline.Song{Item: first, File: "Ada - First Song.mp3", Single: true})
+	a.settings.RailExpanded = true
+	tt := ui.NewTester(a.view, 1280, 1600)
+	tt.Frame()
+
+	play, ok := tt.Find("Playback")
+	settings, okSettings := tt.Find("Settings")
+	if !ok || !okSettings || play.Y >= settings.Y {
+		t.Fatalf("Playback is not above Settings: %v %v", play, settings)
+	}
+
+	tt.RightClick("First Song")
+	tt.Frame()
+	if _, ok := tt.Find("Play track"); !ok || !tt.HasText("Downloaded") {
+		t.Fatalf("downloaded menu: %q", tt.Texts())
+	}
+	if _, found := tt.Find("Download"); found {
+		t.Fatal("a downloaded track offered another download")
+	}
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	tt.RightClick("Second Song")
+	tt.Frame()
+	if err := tt.Click("Download"); err != nil {
+		t.Fatalf("download: %v in %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if !tt.HasText("Could not download") {
+		t.Fatalf("download did not start: %q", tt.Texts())
+	}
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	tt.RightClick("Second Song")
+	tt.Frame()
+	if err := tt.Click("Play track"); err != nil {
+		t.Fatalf("play: %v in %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if a.queue.index != 1 || a.current.VideoID != "two" {
+		t.Fatalf("Play left index %d current %q", a.queue.index, a.current.VideoID)
+	}
+
+	from, ok := tt.Find("4:05")
+	to, okTo := tt.Find("3:42")
+	if !ok || !okTo {
+		t.Fatalf("lengths missing: %q", tt.Texts())
+	}
+	dragRow(tt, from.X+from.W/2, from.Y+from.H/2, to.X+to.W/2, to.Y+1)
+	tt.Frame()
+	if got := []string{a.queue.at(0).VideoID, a.queue.at(1).VideoID}; got[0] != "two" || got[1] != "one" {
+		t.Fatalf("drag left the queue as %v", got)
+	}
+	if a.queue.index != 0 || a.current.VideoID != "two" {
+		t.Fatalf("the playing track moved: index %d %q", a.queue.index, a.current.VideoID)
+	}
+
+	if err := tt.Click("Playback"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	for _, text := range []string{"Second pitch", "sounds at +12 st", "Second voice", "Spectrum", "Level", "Compressor", "Threshold", "Knee", "Makeup", "Move playback"} {
+		if !tt.HasText(text) {
+			t.Fatalf("playback panel missing %q in %q", text, tt.Texts())
+		}
+	}
+	if err := tt.Click("Crossfade"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !a.settings.OctaveCrossfade || !tt.HasText("Left is the main voice") {
+		t.Fatalf("crossfade %+v", a.settings.OctaveCrossfade)
+	}
+	bar, ok := tt.Find("Move playback")
+	if !ok {
+		t.Fatal("the panel has no drag handle")
+	}
+	x, y := bar.X+20, bar.Y+bar.H/2
+	dragRow(tt, x, y, x+60, y+40)
+	tt.Frame()
+	if !a.settings.PlaybackPlaced || a.settings.PlaybackX < 40 {
+		t.Fatalf("drag left the panel at %v,%v placed %v", a.settings.PlaybackX, a.settings.PlaybackY, a.settings.PlaybackPlaced)
+	}
+	if err := tt.Click("Close playback"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("1×"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Detach"); err != nil {
+		t.Fatalf("detach: %v in %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if !tt.HasText("Move playback") || !a.playbackPanel.open {
+		t.Fatal("detach did not open the panel")
+	}
+}
+
+func dragRow(tt *ui.Tester, fromX, fromY, toX, toY float32) {
+	tt.Press(fromX, fromY)
+	for k := 1; k <= 4; k++ {
+		f := float32(k) / 4
+		tt.Move(fromX+(toX-fromX)*f, fromY+(toY-fromY)*f)
+	}
+	tt.Release(toX, toY)
 }
 
 func navigationGlyphAngle(img *image.RGBA, button ui.Rect) float64 {

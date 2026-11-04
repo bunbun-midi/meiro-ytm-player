@@ -75,6 +75,24 @@ type app struct {
 	speedTouched string
 	// targetBPMText is the target tempo being typed in the playback panel.
 	targetBPMText string
+	// sideQueueList scrolls the queue beside the rail. sideQueueFollow is
+	// the track it last moved to, and sideQueueSizing is a drag of its edge
+	// still held.
+	sideQueueList   ui.ListState
+	sideQueueFollow string
+	sideQueueSizing bool
+	// sideMenu is the Play and Download menu of one row of that queue.
+	sideMenu struct {
+		open  bool
+		index int
+		key   string
+	}
+	// playbackPanel is the Playback window opened from the rail, or detached
+	// from the speed button. placed is a position the listener has chosen.
+	playbackPanel struct {
+		open, placed, dragging bool
+		x, y                   float32
+	}
 	// settingsSeen is the last settings.json content the watcher read, so it
 	// notices only a change it has not handled. watchSettings starts it, and
 	// then only the watcher's goroutine touches it.

@@ -234,6 +234,24 @@ func TestQueueDragKeepsPlayNextAndBoundary(t *testing.T) {
 	}
 }
 
+// The queue beside the rail has no divider, so a drag there names tracks by
+// their place in the queue. A divider in Up Next must not shift that drop.
+func TestMoveItemsIgnoresTheUpNextDivider(t *testing.T) {
+	q := newQueue()
+	chosen := tracks("a", "b", "c")
+	q.replace(chosen[0], chosen, 0, "")
+	q.appendGenerated(tracks("r1"))
+	if !q.hasDivider() {
+		t.Fatal("no divider")
+	}
+	if !q.moveItems([]int{2}, 0) || !slices.Equal(ids(q.items), []string{"c", "a", "b", "r1"}) {
+		t.Fatalf("move: %v", ids(q.items))
+	}
+	if q.at(q.recStart).VideoID != "r1" || q.index != 1 {
+		t.Fatalf("boundary %q place %d", q.at(q.recStart).VideoID, q.index)
+	}
+}
+
 // YouTube Music recommends a song's music video and its audio upload as two
 // tracks; only one of them is queued.
 func TestAppendGeneratedSkipsOtherUploadsOfSameSong(t *testing.T) {

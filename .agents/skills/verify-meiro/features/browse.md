@@ -12,7 +12,7 @@ A user opens the pages in the rail, follows an item into an album, playlist or a
 
 ## How to get to it (user POV)
 
-- Click `Home`, `Explore`, `Library` or `Settings` in the rail.
+- Click `Home`, `Explore`, `Library` or `Settings` in the rail. The rail stays compact. `Expand navigation` opens the queue beside it, and that queue stays while those pages change. `Resize playlist` is its right edge. A row shows the artist, the title, the length and the album on one line. The artist, the title and the album can be clicked. The length cannot. Drag a row to reorder the queue; Up Next follows. Right-click a row and choose `Play` or `Download`. A downloaded title uses the theme colour. `Playback`, above `Settings`, opens the playback panel.
 - Press `Cmd+1`, `Cmd+2`, `Cmd+3` or `Cmd+,`.
 - Click an album, playlist or artist card on any page.
 - Open a `meiro://` link (see [native-only.md](./native-only.md)).

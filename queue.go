@@ -490,15 +490,24 @@ func (q *queue) moveRows(rows []int, to int) bool {
 			indices = append(indices, index)
 		}
 	}
-	if len(indices) == 0 {
-		return false
-	}
 	toIndex := to
 	if q.hasDivider() && to > q.recStart {
 		toIndex--
 	}
+	return q.moveItems(indices, toIndex)
+}
+
+// moveItems carries out a reorder of the queue itself: the tracks at
+// indices move to before to, as the queue stood before the move. The side
+// queue lists tracks with no divider, so its rows are these indices. The
+// current track and the boundary of the generated tracks follow. It reports
+// whether anything moved.
+func (q *queue) moveItems(indices []int, to int) bool {
+	if len(indices) == 0 {
+		return false
+	}
 	current := q.current()
-	moved := reorder(q.items, indices, toIndex)
+	moved := reorder(q.items, indices, to)
 	index := slices.IndexFunc(moved, func(item youtube.MusicItem) bool { return item.VideoID == current.VideoID })
 	if index < 0 {
 		return false

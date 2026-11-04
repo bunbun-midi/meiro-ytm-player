@@ -89,6 +89,12 @@ type Player struct {
 	// crossfade is how long the end of a track fades into the start of the
 	// next, zero for none. Written under ctl.
 	crossfade time.Duration
+	// blend is the second voice, and comp the limiter after it. meters is
+	// what the playback panel draws. The audio thread reads the copies
+	// published onto the session.
+	blend  Blend
+	comp   Compressor
+	meters *meters
 
 	// next is the stream decoding ahead of the end of the current one, and
 	// advanced is the tag of the one that took over without a pause, until
@@ -126,7 +132,12 @@ func withAudio(audio *sharedAudio) Option {
 // New creates a player that is not yet playing anything. It does not touch
 // the audio device or the file system.
 func New(options ...Option) *Player {
-	p := &Player{volume: 1, speed: 1, audio: processAudio}
+	p := &Player{
+		volume: 1, speed: 1, audio: processAudio,
+		blend:  Blend{Rel: 12},
+		comp:   DefaultCompressor(),
+		meters: newMeters(),
+	}
 	for _, option := range options {
 		option(p)
 	}
@@ -221,7 +232,10 @@ func (p *Player) PreloadContext(ctx context.Context, tag, url string) error {
 		next.discard()
 		return nil
 	}
-	next.rate.set(p.speed, p.pitch, p.stretch)
+	next.voices.tune(p.speed, p.pitch, p.stretch, p.blend.Rel)
+	next.voices.setBlend(p.blend)
+	next.voices.storeComp(p.comp)
+	next.comp.store(p.comp)
 	old := p.next
 	p.next = next
 	p.mu.Unlock()
@@ -451,6 +465,10 @@ const (
 	MaxDragSpeed = 4
 	MinPitch     = -12.0
 	MaxPitch     = 12.0
+	// VoicePitch is as far as the second voice may sit from the recording,
+	// in semitones. The pitch slider stays within MaxPitch. A second voice
+	// an octave above a slider at +12 reaches +24.
+	VoicePitch = 24.0
 )
 
 // SetSpeed sets how fast streams play, 1 for their own pace, keeping their
@@ -530,13 +548,35 @@ func (p *Player) storePlayback(speed, semitones float64) {
 }
 
 // publishRate hands the current speed, pitch and stretch to the streams
-// already open. The caller holds mu.
+// already open, and retunes the second voice to match. The caller holds mu.
 func (p *Player) publishRate() {
-	if p.session != nil && p.session.rate != nil {
-		p.session.rate.set(p.speed, p.pitch, p.stretch)
+	for _, s := range []*session{p.session, p.next} {
+		if s == nil {
+			continue
+		}
+		if s.voices != nil {
+			s.voices.tune(p.speed, p.pitch, p.stretch, p.blend.Rel)
+			s.voices.setBlend(p.blend)
+			continue
+		}
+		if s.rate != nil {
+			s.rate.set(p.speed, p.pitch, p.stretch)
+		}
 	}
-	if p.next != nil && p.next.rate != nil {
-		p.next.rate.set(p.speed, p.pitch, p.stretch)
+}
+
+// publishComp hands the limiter to the streams already open. The caller holds mu.
+func (p *Player) publishComp() {
+	for _, s := range []*session{p.session, p.next} {
+		if s == nil {
+			continue
+		}
+		if s.voices != nil {
+			s.voices.storeComp(p.comp)
+		}
+		if s.comp != nil {
+			s.comp.store(p.comp)
+		}
 	}
 }
 
@@ -739,7 +779,10 @@ func (p *Player) start(ctx context.Context, url string, at time.Duration, paused
 	p.mu.Lock()
 	// A slider may have moved while ffmpeg was opening. The reader has not
 	// started, so this is the rate the first sample plays at.
-	s.rate.set(p.speed, p.pitch, p.stretch)
+	s.voices.tune(p.speed, p.pitch, p.stretch, p.blend.Rel)
+	s.voices.setBlend(p.blend)
+	s.voices.storeComp(p.comp)
+	s.comp.store(p.comp)
 	s.out.SetVolume(p.volume)
 	p.session = s
 	p.mu.Unlock()
@@ -774,9 +817,17 @@ func (p *Player) decode(ffmpeg, url string, at time.Duration, eq []float64, bass
 		offset: at, done: make(chan struct{}), quit: make(chan struct{}), eq: newEqualizer(eq),
 		bass: newBassBoost(bassOn, bassDB),
 	}
-	s.rate = newRateReader(pipe, newRateControl(speed, pitch))
-	s.rate.set(speed, pitch, stretch)
-	s.fade = newFadeReader(newEQReader(newBassReader(s.rate, s.bass), s.eq), func() *session { return p.upcoming(s) })
+	p.mu.Lock()
+	blend, comp := p.blend, p.comp
+	p.mu.Unlock()
+	// Two readers share the pipe through a fan, so a second pitch stays on
+	// the same source samples as the main voice. The main reader remains
+	// the position clock: its output frames are the ones the device plays.
+	s.voices = newVoiceMix(pipe, speed, pitch, stretch, blend)
+	s.voices.storeComp(comp)
+	s.rate = s.voices.main
+	s.comp = newCompReader(newEQReader(newBassReader(s.voices, s.bass), s.eq), comp, p.meters)
+	s.fade = newFadeReader(s.comp, func() *session { return p.upcoming(s) })
 	s.source = newCountingReader(s.fade, func() io.Reader { return p.handoff(s) })
 	go p.reap(s)
 	return s, nil
@@ -1121,6 +1172,9 @@ type session struct {
 	// shifts the decoded audio as it plays.
 	offset time.Duration
 	rate   *rateReader
+	// voices mixes the main pitch with the second one. comp limits the sum.
+	voices *voiceMix
+	comp   *compReader
 	paused bool
 	// stopped is set when the app, not ffmpeg, ended the decode.
 	stopped bool

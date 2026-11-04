@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Reorder the queue beside the navigation rail.** Drag a track to move it. Up Next follows. Right-click a track there to play it or download it. A downloaded track's title is drawn in the theme's own colour.
+- **Open Playback from the rail.** The button above Settings opens the playback panel, and the panel can be dragged anywhere. Detach on the speed button's panel does the same.
+- **Blend a second pitch.** The playback panel adds a copy of the track, an octave above the pitch slider unless another interval is chosen. The fader brings that copy in from the right. Crossfade trades the main voice for it; otherwise the main voice stays at full volume. A spectrum, a level meter and a compressor sit with the fader so the two together stay under full scale.
 - **See the tempo beside the measure marks.** The seek bar shows the track's BPM and the BPM at the current speed.
 - **Match a tempo.** The playback control has a target BPM. Turn it on and each new track's speed is set so the tempo at that speed matches. Turn it off to leave the speed alone. Moving the speed slider keeps the speed you chose until the next track.
 - **Download the song that's playing.** A button beside Repeat saves it. Settings → Sound → Download folder, under BPM detection, chooses where those songs go, including ones saved from a song's menu. Each file is named Artist - Song. The format is MP3 unless another is chosen there, and an MP3 is tagged with the artist, the title and the album.
@@ -24,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **The navigation rail stays compact.** Its menu button opens the queue beside it, on Home, Search, Explore, Library and Downloads. Each row is the artist, the title, the length and the album, and the queue's right edge sets how wide it is.
 - **The speed slider uses Bungee.** Settings → Sound → Time stretch can switch it to the phase vocoder or to overlap-add, and the change applies while a track is playing.
 - **Playback speed is a slider.** It runs from 0.05× to 1.8× in steps of 0.001, in the player bar, the full player and the tray's mini player. Dragging the speed or the pitch changes the sound straight away, and the track keeps playing through it. Dragging the speed slider past either end keeps changing the speed at the same rate, down to 0.01× or up to 4×. The pitch stays put when only the speed moves. Songs and podcasts still remember their own speed.
 

@@ -213,6 +213,10 @@ func (a *app) setup() {
 	a.player.SetVolume(playbackVolume(a.volume, 0, false, a.settings.LogVolume))
 	a.loadEQ()
 	a.applyBass()
+	a.applyBlend()
+	a.playbackPanel.placed = a.settings.PlaybackPlaced
+	a.playbackPanel.x = float32(a.settings.PlaybackX)
+	a.playbackPanel.y = float32(a.settings.PlaybackY)
 	a.applyCrossfade()
 	a.applyStretch()
 	if runtime.GOOS == "windows" && (runtime.GOARCH == "amd64" || runtime.GOARCH == "arm64") {

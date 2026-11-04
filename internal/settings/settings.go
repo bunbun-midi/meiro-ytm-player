@@ -38,8 +38,11 @@ type Settings struct {
 	// Matugen takes the colours from colors.json, which matugen writes, in
 	// place of the seed. Dynamic and Matugen are never both on.
 	Matugen bool `json:"matugen,omitempty"`
-	// RailExpanded keeps the navigation rail open, with labels beside icons.
+	// RailExpanded keeps the queue open beside the navigation rail. The rail
+	// itself stays at its compact width.
 	RailExpanded bool `json:"railExpanded"`
+	// SideQueueWidth is that queue's width, in DIPs. 0 is the usual width.
+	SideQueueWidth float64 `json:"sideQueueWidth,omitempty"`
 	// Zoom is how large the interface is, as a percentage: 100 shows it at
 	// its own size.
 	Zoom int `json:"zoom,omitempty"`
@@ -155,6 +158,30 @@ type Settings struct {
 	TargetBPMOn bool `json:"targetBPM,omitempty"`
 	// TargetBPM is that tempo, in beats per minute. 0 sets nothing.
 	TargetBPM float64 `json:"targetBPMValue,omitempty"`
+	// OctaveSemitones is how far the second voice sits above the pitch
+	// slider. 12 is an octave above. OctaveFade is the fader, 0 for the
+	// main voice only and 1 for as far toward the second voice as it goes.
+	// OctaveCrossfade trades one voice for the other; off, the main voice
+	// stays at full volume and the fader adds the second.
+	OctaveSemitones float64 `json:"octaveSemitones"`
+	OctaveFade      float64 `json:"octaveFade"`
+	OctaveCrossfade bool    `json:"octaveCrossfade"`
+	// Compressor limits the mix. Threshold, Knee and Makeup are dB. Ratio
+	// is the reduction above the threshold. Attack and Release are
+	// milliseconds. A zero ratio or attack in an old file is filled in
+	// from the defaults by Parse.
+	Compressor    bool    `json:"compressor"`
+	CompThreshold float64 `json:"compThreshold"`
+	CompRatio     float64 `json:"compRatio"`
+	CompAttack    float64 `json:"compAttack"`
+	CompRelease   float64 `json:"compRelease"`
+	CompKnee      float64 `json:"compKnee"`
+	CompMakeup    float64 `json:"compMakeup"`
+	// PlaybackPlaced is a playback panel the listener has dragged.
+	// PlaybackX and PlaybackY are where its top left sits, in DIPs.
+	PlaybackPlaced bool    `json:"playbackPlaced,omitempty"`
+	PlaybackX      float64 `json:"playbackX,omitempty"`
+	PlaybackY      float64 `json:"playbackY,omitempty"`
 }
 
 // TrayMark names one of the menu bar icon styles.
@@ -173,6 +200,7 @@ func Defaults() Settings {
 		Seed: "#6750a4", Mode: "system", Volume: 70, AutoPlay: true, CacheSongs: audio.DefaultLimit, NotifyTrack: runtime.GOOS != "darwin", ShowTray: runtime.GOOS != "darwin", TrayMark: TrayMarkWordmark,
 		Zoom: DefaultZoom, ShowNotch: true, CrossfadeSeconds: DefaultCrossfade,
 		SpeedFine: DefaultSpeedFine, BassDB: 6, DownloadFormat: DownloadMP3,
+		OctaveSemitones: 12, Compressor: true, CompRatio: 20, CompAttack: 5, CompRelease: 50,
 	}
 }
 
@@ -422,7 +450,52 @@ func Parse(data []byte) (Settings, error) {
 	read.BassDB = ClampBassBoost(read.BassDB)
 	read.DownloadFormat = NormalizeDownloadFormat(read.DownloadFormat)
 	read.TargetBPM = ClampTargetBPM(read.TargetBPM)
+	read.SideQueueWidth = ClampSideQueueWidth(read.SideQueueWidth)
+	read.OctaveSemitones = ClampOctave(read.OctaveSemitones)
+	read.OctaveFade = ClampUnitInterval(read.OctaveFade)
+	read.CompThreshold = clampSetting(read.CompThreshold, -60, 0)
+	read.CompRatio = clampSetting(read.CompRatio, 1, 20)
+	read.CompAttack = clampSetting(read.CompAttack, 0.1, 200)
+	read.CompRelease = clampSetting(read.CompRelease, 5, 2000)
+	read.CompKnee = clampSetting(read.CompKnee, 0, 24)
+	read.CompMakeup = clampSetting(read.CompMakeup, 0, 24)
 	return read, nil
+}
+
+// ClampOctave keeps the second voice within an octave of the pitch slider.
+// A value that is not a number is an octave above.
+func ClampOctave(v float64) float64 {
+	if math.IsNaN(v) {
+		return 12
+	}
+	return min(max(v, -12), 12)
+}
+
+// ClampUnitInterval keeps a fader between fully left and fully right.
+func ClampUnitInterval(v float64) float64 {
+	if math.IsNaN(v) || v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
+}
+
+func clampSetting(v, lo, hi float64) float64 {
+	if math.IsNaN(v) {
+		return lo
+	}
+	return min(max(v, lo), hi)
+}
+
+// ClampSideQueueWidth keeps a queue width beside the rail between 96 and
+// 640 DIPs. Zero means the usual width, chosen where the queue is drawn.
+func ClampSideQueueWidth(w float64) float64 {
+	if math.IsNaN(w) || w <= 0 {
+		return 0
+	}
+	return min(max(w, 96), 640)
 }
 
 // The audio a download can be saved as. DownloadMP3 is the one a new

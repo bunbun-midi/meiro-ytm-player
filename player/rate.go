@@ -622,12 +622,13 @@ func clampSpeed(speed float64) float64 {
 }
 
 // pitchRatio is how much faster the resampler reads to raise the key by
-// semitones. 0 stays at 1, so the resampler copies samples across.
+// semitones. 0 stays at 1, so the resampler copies samples across. The
+// slider stays within MaxPitch; a second voice may reach VoicePitch.
 func pitchRatio(semitones float64) float64 {
-	if semitones > MaxPitch {
-		semitones = MaxPitch
-	} else if semitones < MinPitch {
-		semitones = MinPitch
+	if semitones > VoicePitch {
+		semitones = VoicePitch
+	} else if semitones < -VoicePitch {
+		semitones = -VoicePitch
 	}
 	if semitones == 0 {
 		return 1

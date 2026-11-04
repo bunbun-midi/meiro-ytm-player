@@ -44,6 +44,9 @@ type RailSpec struct {
 	Footer   []NavItem // destinations pinned to the bottom
 	Selected string
 	Expanded bool
+	// MenuOpen names the menu button as Collapse navigation. It does not
+	// widen the rail.
+	MenuOpen bool
 	// TopInset keeps the rail clear of the window controls of a window with
 	// a hidden title bar, and lets the band they sit in drag the window.
 	TopInset float32
@@ -78,7 +81,7 @@ func Rail(c *ui.Context, spec RailSpec) RailEvent {
 		if spec.TopInset > 0 {
 			ui.Box(c).Height(spec.TopInset).FillWidth().Shrink(0).DragWindow()
 		}
-		menu := railMenu(c, p, expanded)
+		menu := railMenu(c, p, spec.MenuOpen)
 		// The button sits on the collapsed icon's centre line at every width:
 		// centring it in the rail would slide it while the rail grows.
 		// Its pointer target is MinTarget wide and its shape is
@@ -111,7 +114,7 @@ func railMenu(c *ui.Context, open float32, expanded bool) ui.Element {
 	sc := Of(c).Scheme
 	label := pick(expanded, "Collapse navigation", "Expand navigation")
 	b := ui.ButtonBase(c.Key("rail-menu"))
-	b.Size(MinTarget, MinTarget).Center().Cursor(ui.CursorPointer).Label(label).Tooltip(label).Transition(Fade(EffectsFast))
+	b.Size(MinTarget, MinTarget).Center().Cursor(ui.CursorPointer).Label(label).Transition(Fade(EffectsFast))
 	b.Children(func() {
 		fill := StateFill(ui.Transparent, sc.OnSurfaceVariant, b.Hovered(), b.Pressed(), b.FocusVisible())
 		shape := ui.Box(c).Size(32, 32).Radius(16).Background(fill).Center()

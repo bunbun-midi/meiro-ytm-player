@@ -358,6 +358,8 @@ func (a *app) clearUpcoming() {
 func (a *app) queueChanged() {
 	a.clearQueueSelection()
 	a.nowPlaying.queueFollow = "" // the list scrolls to the current track again
+	a.sideQueueFollow = ""
+	a.sideMenu.open = false
 	a.warmNext()
 	a.syncPreload()
 	a.ensureUpNext()

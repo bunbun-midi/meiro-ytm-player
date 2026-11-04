@@ -11,7 +11,6 @@ import (
 	"github.com/elianiva/meiro/internal/history"
 	"github.com/elianiva/meiro/internal/keymap"
 	"github.com/elianiva/meiro/m3"
-	"github.com/elianiva/meiro/player"
 	"github.com/elianiva/meiro/youtube"
 )
 
@@ -315,13 +314,14 @@ func (a *app) speedControl(c *ui.Context, key string) {
 	// the button closes it, as the account menu's button does.
 	wasOpen := a.nowPlaying.speedMenu == key
 	if anchor.Clicked() {
+		a.playbackPanel.open = false
 		if wasOpen {
 			a.nowPlaying.speedMenu = ""
 		} else {
 			a.nowPlaying.speedMenu = key
 		}
 	}
-	if a.nowPlaying.speedMenu != key {
+	if a.playbackPanel.open || a.nowPlaying.speedMenu != key {
 		return
 	}
 	open := true
@@ -339,16 +339,18 @@ func (a *app) speedControl(c *ui.Context, key string) {
 		panel.Key("playback-"+key).Width(panelW).Padding(12, padX).Radius(m3.Large).Margin(8, 0, 0, 0).
 			Background(sc.SurfaceContainerHigh)
 		m3.Elevation(c, panel, 3)
-		ui.Column(c).Gap(12).Children(func() {
-			m3.Text(c, m3.LabelMedium, "Playback").TextColor(sc.OnSurfaceVariant)
-			a.rateSlider(c, "Speed", "Playback speed", key+"-speed", player.MinSpeed, player.MaxSpeed, 0.001, speed, speedLabel, a.setSpeedFromSlider, true)
-			a.rateSlider(c, "Pitch", "Pitch in semitones", key+"-pitch", player.MinPitch, player.MaxPitch, 0.1, pitch, pitchLabel, a.setPitch, false)
-			a.pitchPresets(c, key, pitch, presetW, textSize)
-			a.measureJumps(c, key)
-			a.targetBPM(c, key)
-			if m3.Button(c, m3.ButtonSpec{Label: "Normal", Kind: m3.TextOnly, Size: m3.Small40, Key: key + "-reset"}).Clicked() {
-				a.resetPlaybackRate()
-			}
+		ui.Column(c).Gap(8).Children(func() {
+			ui.Row(c).AlignItems(ui.Center).Children(func() {
+				m3.Text(c, m3.LabelMedium, "Playback").TextColor(sc.OnSurfaceVariant)
+				ui.Box(c).Grow(1)
+				if m3.Button(c, m3.ButtonSpec{Label: "Detach", Kind: m3.TextOnly, Size: m3.ExtraSmall32, Key: key + "-detach"}).Clicked() {
+					a.playbackPanel.open = true
+					a.nowPlaying.speedMenu = ""
+				}
+			})
+			ui.Scroll(c).MaxHeight(520).Grow(1).Children(func() {
+				a.playbackColumn(c, key, presetW, textSize)
+			})
 		})
 	})
 	if !open {
